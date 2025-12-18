@@ -1,0 +1,4 @@
+/target
+/icon_cache
+\.env
+/steam_overachiever.db
