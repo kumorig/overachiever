@@ -22,6 +22,7 @@ pub struct Game {
     pub playtime_forever: u32,
     pub rtime_last_played: Option<u32>,
     pub img_icon_url: Option<String>,
+    #[allow(dead_code)]
     pub added_at: chrono::DateTime<chrono::Utc>,
     pub achievements_total: Option<i32>,
     pub achievements_unlocked: Option<i32>,
@@ -91,9 +92,11 @@ pub struct RunHistory {
 pub struct AchievementHistory {
     #[allow(dead_code)]
     pub id: i64,
+    #[allow(dead_code)]
     pub recorded_at: chrono::DateTime<chrono::Utc>,
     pub total_achievements: i32,
     pub unlocked_achievements: i32,
+    #[allow(dead_code)]
     pub games_with_achievements: i32,
     pub avg_completion_percent: f32,
 }

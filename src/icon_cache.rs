@@ -72,6 +72,7 @@ impl IconCache {
     }
     
     /// Get the URI for an icon - returns original URL (caching happens in background)
+    #[allow(dead_code)]
     pub fn get_icon_uri(&self, url: &str) -> String {
         if url.is_empty() {
             return url.to_string();
