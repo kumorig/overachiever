@@ -71,8 +71,8 @@ async fn main() {
         .route("/ws", get(ws_handler::ws_handler))
         // REST API
         .route("/api/games", get(routes::get_games))
-        .route("/api/games/:appid/achievements", get(routes::get_achievements))
-        .route("/api/community/ratings/:appid", get(routes::get_ratings))
+        .route("/api/games/{appid}/achievements", get(routes::get_achievements))
+        .route("/api/community/ratings/{appid}", get(routes::get_ratings))
         .route("/api/community/ratings", post(routes::submit_rating))
         // Auth
         .route("/auth/steam", get(auth::steam_login))

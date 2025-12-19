@@ -5,8 +5,6 @@
   "private": true,
   "scripts": {
     "build:wasm": "powershell -ExecutionPolicy Bypass -File scripts/build_wasm.ps1",
-    "build:backend": "powershell -ExecutionPolicy Bypass -File scripts/build_backend.ps1",
-    "build": "npm run build:wasm && npm run build:backend",
     "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
     "setup-server": "powershell -ExecutionPolicy Bypass -File scripts/setup_server.ps1"
   },

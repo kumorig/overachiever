@@ -9,6 +9,7 @@ mod app;
 mod ws_client;
 
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -18,13 +19,24 @@ pub fn main() {
     // Initialize tracing for WASM
     tracing_wasm::set_as_global_default();
     
+    // Get canvas element
+    let document = web_sys::window()
+        .expect("No window")
+        .document()
+        .expect("No document");
+    let canvas = document
+        .get_element_by_id("canvas")
+        .expect("No canvas element")
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .expect("Canvas is not HtmlCanvasElement");
+    
     // Start the eframe app
     let web_options = eframe::WebOptions::default();
     
-    wasm_bindgen_futures::spawn_local(async {
+    wasm_bindgen_futures::spawn_local(async move {
         eframe::WebRunner::new()
             .start(
-                "canvas",
+                canvas,
                 web_options,
                 Box::new(|cc| {
                     egui_extras::install_image_loaders(&cc.egui_ctx);

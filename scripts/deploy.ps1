@@ -1,5 +1,5 @@
 # Deployment script for Overachiever
-# Builds WASM and backend locally, deploys to tatsugo server
+# Builds WASM locally, syncs source to server, builds backend on server
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -13,8 +13,8 @@ try {
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
 
-    # Step 1: Build WASM
-    Write-Host "Step 1: Building WASM..." -ForegroundColor Yellow
+    # Step 1: Build WASM locally
+    Write-Host "Step 1: Building WASM locally..." -ForegroundColor Yellow
     & "$ScriptDir\build_wasm.ps1"
 
     if ($LASTEXITCODE -ne 0) {
@@ -23,26 +23,16 @@ try {
     }
 
     Write-Host ""
-
-    # Step 2: Build backend
-    Write-Host "Step 2: Building backend for Linux..." -ForegroundColor Yellow
-    & "$ScriptDir\build_backend.ps1"
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Backend build failed! Aborting deployment." -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host ""
-    Write-Host "Step 3: Deploying to tatsugo..." -ForegroundColor Yellow
+    Write-Host "Step 2: Deploying to tatsugo..." -ForegroundColor Yellow
 
     # Remote paths
     $remoteWebPath = "/var/www/overachiever"
     $remoteBackendPath = "/opt/overachiever"
+    $remoteSrcPath = "/opt/overachiever/src"
 
     # Create remote directories
     Write-Host "Creating remote directories..." -ForegroundColor Cyan
-    plink tatsugo "sudo mkdir -p $remoteWebPath && sudo mkdir -p $remoteBackendPath && mkdir -p /tmp/overachiever_web && mkdir -p /tmp/overachiever_backend"
+    plink tatsugo "sudo mkdir -p $remoteWebPath && sudo mkdir -p $remoteBackendPath && sudo mkdir -p $remoteSrcPath && mkdir -p /tmp/overachiever_web"
 
     # Deploy WASM frontend
     Write-Host "Copying WASM files..." -ForegroundColor Cyan
@@ -53,33 +43,51 @@ try {
         exit 1
     }
 
-    # Deploy backend binary
-    Write-Host "Copying backend binary..." -ForegroundColor Cyan
-    pscp "target/x86_64-unknown-linux-gnu/release/overachiever-server" "tatsugo:/tmp/overachiever_backend/"
+    # Sync backend source code to server (only crates needed for backend)
+    Write-Host "Syncing backend source code..." -ForegroundColor Cyan
+    # Use server-specific Cargo.toml that only includes core and backend
+    pscp "$ScriptDir\server\Cargo.server.toml" "tatsugo:$remoteSrcPath/Cargo.toml"
+    pscp "Cargo.lock" "tatsugo:$remoteSrcPath/"
+    plink tatsugo "mkdir -p $remoteSrcPath/crates"
+    pscp -r crates/core "tatsugo:$remoteSrcPath/crates/"
+    pscp -r crates/backend "tatsugo:$remoteSrcPath/crates/"
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Backend file copy failed!" -ForegroundColor Red
+        Write-Host "Source sync failed!" -ForegroundColor Red
         exit 1
     }
 
-    # Move files and restart services
-    Write-Host "Moving files and restarting services..." -ForegroundColor Cyan
-    $deployCommands = @"
-sudo rm -rf $remoteWebPath/*
-sudo mv /tmp/overachiever_web/* $remoteWebPath/
-sudo rmdir /tmp/overachiever_web
-sudo mv /tmp/overachiever_backend/overachiever-server $remoteBackendPath/
-sudo chmod +x $remoteBackendPath/overachiever-server
-sudo rmdir /tmp/overachiever_backend
-sudo chown -R www-data:www-data $remoteWebPath
-sudo systemctl restart overachiever-backend || true
-sudo nginx -t && sudo systemctl reload nginx
-"@
-
-    plink tatsugo $deployCommands
+    # Build backend on server and deploy
+    Write-Host "Building backend on server (this may take a while on first run)..." -ForegroundColor Cyan
+    
+    # Source cargo env and build
+    plink tatsugo "source ~/.cargo/env && cd $remoteSrcPath && cargo build --release -p overachiever-backend"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Backend build failed!" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Deploying files..." -ForegroundColor Cyan
+    
+    # Deploy WASM files
+    plink tatsugo "sudo rm -rf $remoteWebPath/*"
+    plink tatsugo "sudo mv /tmp/overachiever_web/* $remoteWebPath/"
+    plink tatsugo "sudo rmdir /tmp/overachiever_web 2>/dev/null || true"
+    plink tatsugo "sudo chown -R www-data:www-data $remoteWebPath"
+    
+    # Deploy backend binary
+    plink tatsugo "sudo cp $remoteSrcPath/target/release/overachiever-server $remoteBackendPath/"
+    plink tatsugo "sudo chmod +x $remoteBackendPath/overachiever-server"
+    
+    # Restart backend service
+    plink tatsugo "sudo systemctl restart overachiever-backend 2>/dev/null || echo 'Service not yet running'"
+    
+    # Reload nginx
+    plink tatsugo "sudo nginx -t && sudo systemctl reload nginx"
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Deployment failed!" -ForegroundColor Red
+        Write-Host "Build/deployment on server failed!" -ForegroundColor Red
         exit 1
     }
 

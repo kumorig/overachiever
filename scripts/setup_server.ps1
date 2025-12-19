@@ -1,5 +1,5 @@
 # Server setup script for Overachiever on tatsugo
-# Run this once to set up nginx config, systemd service, and SSL
+# Run this once to set up Rust, nginx config, systemd service, and SSL
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -8,6 +8,23 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host " Overachiever Server Setup" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
+
+# Check if Rust is installed
+Write-Host "Checking if Rust is installed on server..." -ForegroundColor Yellow
+$rustCheck = plink tatsugo "which cargo 2>/dev/null && echo RUST_OK || echo RUST_MISSING"
+
+if ($rustCheck -match "RUST_MISSING") {
+    Write-Host "Rust not found. Installing Rust on server..." -ForegroundColor Yellow
+    plink tatsugo "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source ~/.cargo/env && cargo --version"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Rust installation failed!" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Rust installed successfully!" -ForegroundColor Green
+} else {
+    Write-Host "Rust is already installed." -ForegroundColor Green
+}
 
 # Copy config files to server
 Write-Host "Copying config files to server..." -ForegroundColor Yellow
@@ -22,41 +39,18 @@ if ($LASTEXITCODE -ne 0) {
 
 # Set up server
 Write-Host "Setting up server..." -ForegroundColor Yellow
-$setupCommands = @"
-# Create directories
-sudo mkdir -p /var/www/overachiever
-sudo mkdir -p /opt/overachiever
-sudo chown -R www-data:www-data /var/www/overachiever
 
-# Install nginx config
-sudo mv /tmp/nginx-overachiever.conf /etc/nginx/sites-available/overachiever.space
-sudo ln -sf /etc/nginx/sites-available/overachiever.space /etc/nginx/sites-enabled/
-
-# Install systemd service
-sudo mv /tmp/overachiever-backend.service /etc/systemd/system/
-sudo systemctl daemon-reload
-
-# Create env file if not exists
-if [ ! -f /opt/overachiever/.env ]; then
-    sudo mv /tmp/overachiever.env.example /opt/overachiever/.env
-    echo "Created /opt/overachiever/.env - PLEASE EDIT WITH REAL VALUES"
-else
-    rm /tmp/overachiever.env.example
-    echo "Keeping existing /opt/overachiever/.env"
-fi
-
-# Test nginx config
-sudo nginx -t
-
-echo ""
-echo "Setup complete! Next steps:"
-echo "1. Edit /opt/overachiever/.env with real database credentials"
-echo "2. Run: sudo certbot --nginx -d overachiever.space -d www.overachiever.space"
-echo "3. Run: sudo systemctl enable overachiever-backend"
-echo "4. Deploy with: npm run deploy"
-"@
-
-plink tatsugo $setupCommands
+# Run commands one by one to avoid line ending issues
+plink tatsugo "sudo mkdir -p /var/www/overachiever /opt/overachiever /opt/overachiever/src"
+plink tatsugo "sudo chown -R `$USER:`$USER /opt/overachiever"
+plink tatsugo "sudo chown -R www-data:www-data /var/www/overachiever"
+plink tatsugo "sudo mv /tmp/nginx-overachiever.conf /etc/nginx/sites-available/overachiever.space"
+plink tatsugo "sudo ln -sf /etc/nginx/sites-available/overachiever.space /etc/nginx/sites-enabled/"
+plink tatsugo "sudo mv /tmp/overachiever-backend.service /etc/systemd/system/"
+plink tatsugo "sudo systemctl daemon-reload"
+plink tatsugo "test -f /opt/overachiever/.env || (sudo mv /tmp/overachiever.env.example /opt/overachiever/.env && sudo chown `$USER:`$USER /opt/overachiever/.env && echo 'Created .env')"
+plink tatsugo "rm -f /tmp/overachiever.env.example 2>/dev/null || true"
+plink tatsugo "sudo nginx -t"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Setup failed!" -ForegroundColor Red

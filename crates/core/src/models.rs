@@ -226,7 +226,7 @@ pub struct CommunityGameRating {
 }
 
 /// User profile from Steam
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserProfile {
     pub steam_id: String,
     pub display_name: String,

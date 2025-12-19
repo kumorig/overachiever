@@ -5,7 +5,7 @@ use egui_phosphor::regular;
 use overachiever_core::{Game, GameAchievement, RunHistory, AchievementHistory, LogEntry, UserProfile};
 use std::collections::{HashMap, HashSet};
 
-use crate::ws_client::{WsClient, WsState};
+use crate::ws_client::WsClient;
 
 #[derive(Clone, PartialEq)]
 pub enum ConnectionState {
@@ -196,10 +196,10 @@ impl eframe::App for WasmApp {
         
         // Login/Settings window
         if self.show_login {
+            let mut close_window = false;
             egui::Window::new("Settings")
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .collapsible(false)
-                .open(&mut self.show_login)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Server URL:");
@@ -212,6 +212,7 @@ impl eframe::App for WasmApp {
                         if ui.button("Connect").clicked() {
                             save_server_url(&self.server_url);
                             self.connect();
+                            close_window = true;
                         }
                     }
                     
@@ -226,7 +227,15 @@ impl eframe::App for WasmApp {
                                 .and_then(|w| w.open_with_url(&login_url).ok());
                         }
                     }
+                    
+                    ui.add_space(8.0);
+                    if ui.button("Close").clicked() {
+                        close_window = true;
+                    }
                 });
+            if close_window {
+                self.show_login = false;
+            }
         }
         
         // Main content

@@ -9,8 +9,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 overachiever-core = { path = "../core" }
 
-# eframe for WASM
-eframe = { version = "0.33.3", default-features = false, features = ["wgpu"] }
+# eframe for WASM (use glow backend for better web compatibility)
+eframe = { version = "0.33.3", default-features = false, features = ["glow"] }
 egui = "0.33.3"
 egui_extras = { version = "0.33.3", features = ["all_loaders", "http", "image"] }
 egui_plot = "0.34.0"
@@ -22,6 +22,8 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "Window",
     "Document",
+    "Element",
+    "HtmlCanvasElement",
     "Storage",
     "WebSocket",
     "MessageEvent",
@@ -29,6 +31,7 @@ web-sys = { version = "0.3", features = [
     "CloseEvent",
     "BinaryType",
     "console",
+    "Location",
 ] }
 js-sys = "0.3"
 gloo-net = "0.6"

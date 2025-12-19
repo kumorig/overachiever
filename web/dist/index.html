@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overachiever</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-family: sans-serif;
+            text-align: center;
+        }
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top: 4px solid #6cf;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>Loading Overachiever...</div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script type="module">
+        import init from './pkg/overachiever_wasm.js';
+        
+        async function main() {
+            await init();
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        main().catch(err => {
+            console.error('Failed to load:', err);
+            document.getElementById('loading').innerHTML = 
+                '<div style="color: #f66;">Failed to load: ' + err + '</div>';
+        });
+    </script>
+</body>
+</html>
