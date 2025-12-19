@@ -359,7 +359,7 @@ impl SteamOverachieverApp {
                     let row_rect = ui.available_rect_before_wrap();
                     let row_rect = egui::Rect::from_min_size(
                         row_rect.min,
-                        egui::vec2(row_rect.width(), 36.0)
+                        egui::vec2(row_rect.width(), 52.0)
                     );
                     if i % 2 == 1 {
                         ui.painter().rect_filled(
@@ -372,7 +372,7 @@ impl SteamOverachieverApp {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(image_source)
-                                .fit_to_exact_size(egui::vec2(32.0, 32.0))
+                                .fit_to_exact_size(egui::vec2(48.0, 48.0))
                                 .corner_radius(4.0)
                         );
                         
@@ -382,28 +382,30 @@ impl SteamOverachieverApp {
                             egui::RichText::new(&ach.name).color(egui::Color32::DARK_GRAY)
                         };
                         
-                        let available = ui.available_width() - 100.0;
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(available, 32.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.label(name_text).on_hover_text(
-                                    ach.description.as_deref().unwrap_or("No description")
-                                );
-                            }
-                        );
+                        let description_text = ach.description.as_deref().unwrap_or("");
+                        let desc_color = if ach.achieved {
+                            egui::Color32::GRAY
+                        } else {
+                            egui::Color32::from_rgb(80, 80, 80)
+                        };
                         
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if let Some(unlock_dt) = &ach.unlocktime {
-                                ui.label(
-                                    egui::RichText::new(unlock_dt.format("%Y-%m-%d").to_string())
-                                        .color(egui::Color32::from_rgb(100, 200, 100))
-                                );
-                            } else {
-                                ui.label(
-                                    egui::RichText::new("—")
-                                        .color(egui::Color32::GRAY)
-                                );
+                        ui.vertical(|ui| {
+                            ui.add_space(4.0);
+                            // Top row: name and date
+                            ui.horizontal(|ui| {
+                                ui.label(name_text);
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if let Some(unlock_dt) = &ach.unlocktime {
+                                        ui.label(
+                                            egui::RichText::new(unlock_dt.format("%Y-%m-%d").to_string())
+                                                .color(egui::Color32::from_rgb(100, 200, 100))
+                                        );
+                                    }
+                                });
+                            });
+                            // Description below, full width
+                            if !description_text.is_empty() {
+                                ui.label(egui::RichText::new(description_text).color(desc_color));
                             }
                         });
                     });

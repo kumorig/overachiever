@@ -1,7 +1,7 @@
+use crate::config::Config;
 use crate::models::{Game, SteamGame, Achievement, AchievementSchema};
 use std::sync::mpsc::Sender;
 
-const STEAM_ID: u64 = 76561197975373553;
 const API_OWNED_GAMES: &str = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
 const API_RECENTLY_PLAYED: &str = "https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/";
 const API_ACHIEVEMENTS: &str = "http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/";
@@ -38,17 +38,16 @@ pub enum UpdateProgress {
 }
 
 pub fn fetch_owned_games_with_progress(progress_tx: Sender<FetchProgress>) -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
-    let steam_key = match std::env::var("STEAM_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            let _ = progress_tx.send(FetchProgress::Error("STEAM_KEY must be set in .env file".to_string()));
-            return Ok(());
-        }
-    };
+    let config = Config::load();
+    if !config.is_valid() {
+        let _ = progress_tx.send(FetchProgress::Error("Please configure steam_web_api_key and steam_id in config.toml".to_string()));
+        return Ok(());
+    }
+    let steam_key = &config.steam_web_api_key;
+    let steam_id = config.steam_id_u64().unwrap();
     
     let input = serde_json::json!({
-        "steamid": STEAM_ID,
+        "steamid": steam_id,
         "include_appinfo": 1,
         "include_played_free_games": 1
     });
@@ -100,20 +99,19 @@ pub fn fetch_owned_games_with_progress(progress_tx: Sender<FetchProgress>) -> Re
 }
 
 pub fn scrape_achievements_with_progress(progress_tx: Sender<ScrapeProgress>, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
-    let steam_key = match std::env::var("STEAM_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            let _ = progress_tx.send(ScrapeProgress::Error("STEAM_KEY must be set in .env file".to_string()));
-            return Ok(());
-        }
-    };
+    let config = Config::load();
+    if !config.is_valid() {
+        let _ = progress_tx.send(ScrapeProgress::Error("Please configure steam_web_api_key and steam_id in config.toml".to_string()));
+        return Ok(());
+    }
+    let steam_key = &config.steam_web_api_key;
+    let steam_id = config.steam_id_u64().unwrap();
     
     // Step 1: Fetch games first
     let _ = progress_tx.send(ScrapeProgress::FetchingGames);
     
     let input = serde_json::json!({
-        "steamid": STEAM_ID,
+        "steamid": steam_id,
         "include_appinfo": 1,
         "include_played_free_games": 1
     });
@@ -165,7 +163,7 @@ pub fn scrape_achievements_with_progress(progress_tx: Sender<ScrapeProgress>, fo
             API_ACHIEVEMENTS,
             game.appid,
             steam_key,
-            STEAM_ID
+            steam_id
         );
         
         match reqwest::blocking::get(&url) {
@@ -238,9 +236,9 @@ pub fn scrape_achievements_with_progress(progress_tx: Sender<ScrapeProgress>, fo
 }
 
 /// Fetch recently played games from Steam API (returns appids)
-pub fn fetch_recently_played_games(steam_key: &str) -> Result<Vec<u64>, Box<dyn std::error::Error>> {
+pub fn fetch_recently_played_games(steam_key: &str, steam_id: u64) -> Result<Vec<u64>, Box<dyn std::error::Error>> {
     let input = serde_json::json!({
-        "steamid": STEAM_ID,
+        "steamid": steam_id,
         "count": 0  // 0 means return all recently played games
     });
     
@@ -268,20 +266,19 @@ pub fn fetch_recently_played_games(steam_key: &str) -> Result<Vec<u64>, Box<dyn 
 
 /// Run the Update flow: fetch games, get recently played, scrape achievements for recent games
 pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
-    let steam_key = match std::env::var("STEAM_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            let _ = progress_tx.send(UpdateProgress::Error("STEAM_KEY must be set in .env file".to_string()));
-            return Ok(());
-        }
-    };
+    let config = Config::load();
+    if !config.is_valid() {
+        let _ = progress_tx.send(UpdateProgress::Error("Please configure steam_web_api_key and steam_id in config.toml".to_string()));
+        return Ok(());
+    }
+    let steam_key = &config.steam_web_api_key;
+    let steam_id = config.steam_id_u64().unwrap();
     
     // Step 1: Fetch owned games (quick)
     let _ = progress_tx.send(UpdateProgress::FetchingGames);
     
     let input = serde_json::json!({
-        "steamid": STEAM_ID,
+        "steamid": steam_id,
         "include_appinfo": 1,
         "include_played_free_games": 1
     });
@@ -313,7 +310,7 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
     // Step 2: Fetch recently played games
     let _ = progress_tx.send(UpdateProgress::FetchingRecentlyPlayed);
     
-    let recent_appids = fetch_recently_played_games(&steam_key)?;
+    let recent_appids = fetch_recently_played_games(&steam_key, steam_id)?;
     
     if recent_appids.is_empty() {
         // No recently played games, we're done
@@ -345,7 +342,7 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
             API_ACHIEVEMENTS,
             game.appid,
             steam_key,
-            STEAM_ID
+            steam_id
         );
         
         match reqwest::blocking::get(&url) {

@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod config;
 mod db;
 mod icon_cache;
 mod models;
@@ -31,7 +32,7 @@ fn main() -> eframe::Result<()> {
     };
     
     eframe::run_native(
-        "Steam Overachiever v3",
+        "Overachiever v3",
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);            

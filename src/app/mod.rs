@@ -3,6 +3,7 @@
 mod state;
 mod panels;
 
+use crate::config::Config;
 use crate::db::{get_all_games, get_run_history, get_achievement_history, get_log_entries, open_connection, get_last_update};
 use crate::icon_cache::IconCache;
 use crate::models::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry};
@@ -13,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 pub struct SteamOverachieverApp {
+    pub(crate) config: Config,
     pub(crate) games: Vec<Game>,
     pub(crate) run_history: Vec<RunHistory>,
     pub(crate) achievement_history: Vec<AchievementHistory>,
@@ -40,10 +42,14 @@ pub struct SteamOverachieverApp {
     pub(crate) filter_name: String,
     pub(crate) filter_achievements: TriFilter,
     pub(crate) filter_playtime: TriFilter,
+    // Settings window
+    pub(crate) show_settings: bool,
 }
 
 impl SteamOverachieverApp {
     pub fn new() -> Self {
+        let config = Config::load();
+        let show_settings = !config.is_valid(); // Show settings on first run if not configured
         let conn = open_connection().expect("Failed to open database");
         let games = get_all_games(&conn).unwrap_or_default();
         let run_history = get_run_history(&conn).unwrap_or_default();
@@ -52,6 +58,7 @@ impl SteamOverachieverApp {
         let last_update_time = get_last_update(&conn).unwrap_or(None);
         
         let mut app = Self {
+            config,
             games,
             run_history,
             achievement_history,
@@ -71,6 +78,7 @@ impl SteamOverachieverApp {
             filter_name: String::new(),
             filter_achievements: TriFilter::All,
             filter_playtime: TriFilter::All,
+            show_settings,
         };
         
         // Apply consistent sorting after loading from database

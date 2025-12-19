@@ -2,3 +2,4 @@
 /icon_cache
 \.env
 /steam_overachiever.db
+/config.toml

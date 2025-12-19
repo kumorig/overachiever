@@ -212,23 +212,7 @@ impl SteamOverachieverApp {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 4.0;
                                 
-                                // Achievement icon
-                                if !achievement_icon.is_empty() {
-                                    let img_source: egui::ImageSource<'_> = if let Some(bytes) = self.icon_cache.get_icon_bytes(achievement_icon) {
-                                        let cache_uri = format!("bytes://log_ach/{}", achievement_icon.replace(['/', ':', '.'], "_"));
-                                        ui.ctx().include_bytes(cache_uri.clone(), bytes);
-                                        egui::ImageSource::Uri(cache_uri.into())
-                                    } else {
-                                        egui::ImageSource::Uri(achievement_icon.clone().into())
-                                    };
-                                    ui.add(
-                                        egui::Image::new(img_source)
-                                            .fit_to_exact_size(egui::vec2(18.0, 18.0))
-                                            .corner_radius(2.0)
-                                    );
-                                }
-                                
-                                // Game icon
+                                // Game icon (left)
                                 if let Some(icon_hash) = game_icon_url {
                                     if !icon_hash.is_empty() {
                                         let game_icon_url = format!(
@@ -248,6 +232,22 @@ impl SteamOverachieverApp {
                                                 .corner_radius(2.0)
                                         );
                                     }
+                                }
+                                
+                                // Achievement icon (right of game icon)
+                                if !achievement_icon.is_empty() {
+                                    let img_source: egui::ImageSource<'_> = if let Some(bytes) = self.icon_cache.get_icon_bytes(achievement_icon) {
+                                        let cache_uri = format!("bytes://log_ach/{}", achievement_icon.replace(['/', ':', '.'], "_"));
+                                        ui.ctx().include_bytes(cache_uri.clone(), bytes);
+                                        egui::ImageSource::Uri(cache_uri.into())
+                                    } else {
+                                        egui::ImageSource::Uri(achievement_icon.clone().into())
+                                    };
+                                    ui.add(
+                                        egui::Image::new(img_source)
+                                            .fit_to_exact_size(egui::vec2(18.0, 18.0))
+                                            .corner_radius(2.0)
+                                    );
                                 }
                                 
                                 ui.label(egui::RichText::new(timestamp.format("%Y-%m-%d").to_string()).color(date_color).small());
