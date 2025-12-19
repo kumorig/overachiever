@@ -1,23 +1,33 @@
-[package]
-name = "steam-overachiever-v3"
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/desktop",
+    "crates/backend",
+    "crates/wasm",
+]
+
+# Default to desktop when running `cargo run`
+default-members = ["crates/desktop"]
+
+[workspace.package]
 version = "0.2.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/kumorig/steam-overachiever-v3"
 
-[dependencies]
-eframe = { version = "0.33.3", features = ["default_fonts"] }
-egui = "0.33.3"
-egui_extras = { version = "0.33.3", features = ["all_loaders", "http", "image"] }
-egui_plot = "0.34.0"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
-reqwest = { version = "0.12", features = ["json", "blocking"] }
+[workspace.dependencies]
+# Shared dependencies across crates
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
-urlencoding = "2.1"
-egui-phosphor = "0.11.0"
-toml = "0.9"
+tokio = { version = "1", features = ["full"] }
+thiserror = "1.0"
 
-[build-dependencies]
-winresource = "0.1"
+# Core crate
+overachiever-core = { path = "crates/core" }
+
+# Optimize release builds for WASM
+[profile.release]
+opt-level = "s"
+lto = true

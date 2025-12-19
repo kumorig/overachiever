@@ -1,0 +1,95 @@
+//! Overachiever Backend Server
+//! 
+//! Provides:
+//! - WebSocket API for real-time sync
+//! - REST API for initial data load
+//! - Steam API proxy for WASM clients
+//! - PostgreSQL storage for user data
+
+mod db;
+mod steam_api;
+mod ws_handler;
+mod auth;
+mod routes;
+
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use deadpool_postgres::{Config, Runtime, Pool};
+use tokio_postgres::NoTls;
+use tower_http::cors::{CorsLayer, Any};
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use std::sync::Arc;
+
+pub struct AppState {
+    pub db_pool: Pool,
+    pub jwt_secret: String,
+}
+
+#[tokio::main]
+async fn main() {
+    // Load environment variables
+    dotenvy::dotenv().ok();
+    
+    // Initialize tracing
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "overachiever_backend=debug,tower_http=debug".into()))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+    
+    // Database connection pool
+    let mut cfg = Config::new();
+    cfg.host = std::env::var("DB_HOST").ok();
+    cfg.port = std::env::var("DB_PORT").ok().and_then(|p| p.parse().ok());
+    cfg.dbname = std::env::var("DB_NAME").ok();
+    cfg.user = std::env::var("DB_USER").ok();
+    cfg.password = std::env::var("DB_PASSWORD").ok();
+    
+    let db_pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)
+        .expect("Failed to create database pool");
+    
+    // Test connection
+    let _ = db_pool.get().await.expect("Failed to connect to database");
+    tracing::info!("Connected to database");
+    
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "dev-secret-change-in-production".to_string());
+    
+    let state = Arc::new(AppState {
+        db_pool,
+        jwt_secret,
+    });
+    
+    // Build router
+    let app = Router::new()
+        // Health check
+        .route("/health", get(|| async { "OK" }))
+        // WebSocket endpoint
+        .route("/ws", get(ws_handler::ws_handler))
+        // REST API
+        .route("/api/games", get(routes::get_games))
+        .route("/api/games/:appid/achievements", get(routes::get_achievements))
+        .route("/api/community/ratings/:appid", get(routes::get_ratings))
+        .route("/api/community/ratings", post(routes::submit_rating))
+        // Auth
+        .route("/auth/steam", get(auth::steam_login))
+        .route("/auth/steam/callback", get(auth::steam_callback))
+        .with_state(state)
+        .layer(CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any))
+        .layer(TraceLayer::new_for_http());
+    
+    // Start server
+    let addr = std::env::var("BIND_ADDRESS")
+        .unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+    
+    tracing::info!("Starting server on {}", addr);
+    
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}

@@ -1,6 +1,6 @@
 # Overachiever v3
 
-A desktop application for tracking your Steam game library and achievement progress over time. 
+An application for tracking your Steam game library and achievement progress over time. 
 
 This project is in no way affiliated with or endorsed by Valve Corporation.
 

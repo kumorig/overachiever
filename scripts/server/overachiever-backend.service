@@ -1,0 +1,23 @@
+[Unit]
+Description=Overachiever Backend Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/overachiever
+ExecStart=/opt/overachiever/overachiever-server
+Restart=always
+RestartSec=5
+
+# Environment file for secrets
+EnvironmentFile=/opt/overachiever/.env
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=overachiever-backend
+
+[Install]
+WantedBy=multi-user.target
