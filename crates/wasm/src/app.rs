@@ -24,6 +24,7 @@ pub struct WasmApp {
     
     // Data
     games: Vec<Game>,
+    games_loaded: bool,
     run_history: Vec<RunHistory>,
     achievement_history: Vec<AchievementHistory>,
     log_entries: Vec<LogEntry>,
@@ -44,24 +45,29 @@ impl WasmApp {
         // Try to get token from URL params or localStorage
         let auth_token = get_token_from_url().or_else(|| get_token_from_storage());
         
-        // Get server URL from localStorage or use default
-        let server_url = get_server_url().unwrap_or_else(|| "wss://overachiever.space/ws".to_string());
+        // Auto-detect WebSocket URL from current page location
+        let server_url = get_ws_url_from_location();
         
-        Self {
+        let mut app = Self {
             server_url,
             ws_client: None,
             connection_state: ConnectionState::Disconnected,
             games: Vec::new(),
+            games_loaded: false,
             run_history: Vec::new(),
             achievement_history: Vec::new(),
             log_entries: Vec::new(),
-            status: "Not connected".to_string(),
+            status: "Connecting...".to_string(),
             expanded_rows: HashSet::new(),
             achievements_cache: HashMap::new(),
             filter_name: String::new(),
-            show_login: auth_token.is_none(),
+            show_login: false, // Don't show login window on startup - auto connect
             auth_token,
-        }
+        };
+        
+        // Auto-connect on startup
+        app.connect();
+        app
     }
     
     fn connect(&mut self) {
@@ -76,17 +82,47 @@ impl WasmApp {
         match WsClient::new(&self.server_url) {
             Ok(client) => {
                 self.ws_client = Some(client);
-                self.connection_state = ConnectionState::Connected;
-                self.status = "Connected, authenticating...".to_string();
-                
-                // Authenticate if we have a token
-                if let (Some(client), Some(token)) = (&self.ws_client, &self.auth_token) {
-                    client.authenticate(token);
-                }
+                // Stay in Connecting state until WS is actually open
+                // check_ws_state() will transition to Connected when ready
             }
             Err(e) => {
                 self.connection_state = ConnectionState::Error(e.clone());
                 self.status = format!("Connection failed: {}", e);
+            }
+        }
+    }
+    
+    fn check_ws_state(&mut self) {
+        if let Some(client) = &self.ws_client {
+            use crate::ws_client::WsState;
+            match client.state() {
+                WsState::Open => {
+                    // WebSocket is now open, transition to Connected and authenticate
+                    if self.connection_state == ConnectionState::Connecting {
+                        self.connection_state = ConnectionState::Connected;
+                        self.status = "Connected, authenticating...".to_string();
+                        
+                        // Authenticate if we have a token
+                        if let Some(token) = &self.auth_token.clone() {
+                            client.authenticate(token);
+                        } else {
+                            // No token - need to login
+                            self.show_login = true;
+                            self.status = "Connected - please log in".to_string();
+                        }
+                    }
+                }
+                WsState::Error(e) => {
+                    self.connection_state = ConnectionState::Error(e.clone());
+                    self.status = format!("Connection error: {}", e);
+                }
+                WsState::Closed => {
+                    if !matches!(self.connection_state, ConnectionState::Disconnected | ConnectionState::Error(_)) {
+                        self.connection_state = ConnectionState::Disconnected;
+                        self.status = "Disconnected".to_string();
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -99,8 +135,10 @@ impl WasmApp {
         };
         
         for msg in messages {
+            log(&format!("Received message: {:?}", msg));
             match msg {
                 overachiever_core::ServerMessage::Authenticated { user } => {
+                    log(&format!("Authenticated as: {}", user.display_name));
                     self.connection_state = ConnectionState::Authenticated(user.clone());
                     self.status = format!("Logged in as {}", user.display_name);
                     
@@ -115,18 +153,22 @@ impl WasmApp {
                     }
                 }
                 overachiever_core::ServerMessage::AuthError { reason } => {
+                    log(&format!("Auth error: {}", reason));
                     self.connection_state = ConnectionState::Error(reason.clone());
                     self.status = format!("Auth failed: {}", reason);
                     self.show_login = true;
                 }
                 overachiever_core::ServerMessage::Games { games } => {
+                    log(&format!("Received {} games", games.len()));
                     self.games = games;
+                    self.games_loaded = true;
                     self.status = format!("Loaded {} games", self.games.len());
                 }
                 overachiever_core::ServerMessage::Achievements { appid, achievements } => {
                     self.achievements_cache.insert(appid, achievements);
                 }
                 overachiever_core::ServerMessage::Error { message } => {
+                    log(&format!("Server error: {}", message));
                     self.status = format!("Error: {}", message);
                 }
                 _ => {}
@@ -137,8 +179,16 @@ impl WasmApp {
 
 impl eframe::App for WasmApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check WebSocket state transitions
+        self.check_ws_state();
+        
         // Check for incoming WebSocket messages
         self.check_messages();
+        
+        // Auto-reconnect if disconnected
+        if matches!(self.connection_state, ConnectionState::Disconnected) {
+            self.connect();
+        }
         
         // Request repaint to keep checking for messages
         ctx.request_repaint();
@@ -152,16 +202,18 @@ impl eframe::App for WasmApp {
                 // Connection status
                 match &self.connection_state {
                     ConnectionState::Disconnected => {
-                        if ui.button(format!("{} Connect", regular::PLUGS)).clicked() {
-                            self.connect();
-                        }
+                        ui.spinner();
+                        ui.label("Reconnecting...");
+                        // Auto-reconnect when disconnected
+                        // (will be handled by next frame)
                     }
                     ConnectionState::Connecting => {
                         ui.spinner();
                         ui.label("Connecting...");
                     }
                     ConnectionState::Connected => {
-                        ui.label("Connected, waiting for auth...");
+                        ui.spinner();
+                        ui.label("Authenticating...");
                     }
                     ConnectionState::Authenticated(user) => {
                         ui.label(format!("{} {}", regular::USER, user.display_name));
@@ -194,38 +246,23 @@ impl eframe::App for WasmApp {
             });
         });
         
-        // Login/Settings window
-        if self.show_login {
+        // Login window - shown when connected but no token
+        if self.show_login && matches!(self.connection_state, ConnectionState::Connected) {
             let mut close_window = false;
-            egui::Window::new("Settings")
+            egui::Window::new("Login Required")
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .collapsible(false)
+                .resizable(false)
                 .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Server URL:");
-                        ui.text_edit_singleline(&mut self.server_url);
-                    });
+                    ui.label("Please log in with your Steam account to continue:");
                     
-                    ui.add_space(8.0);
+                    ui.add_space(12.0);
                     
-                    if matches!(self.connection_state, ConnectionState::Disconnected | ConnectionState::Error(_)) {
-                        if ui.button("Connect").clicked() {
-                            save_server_url(&self.server_url);
-                            self.connect();
-                            close_window = true;
-                        }
-                    }
-                    
-                    ui.add_space(8.0);
-                    
-                    if matches!(self.connection_state, ConnectionState::Connected) {
-                        ui.label("Please log in with Steam:");
-                        if ui.button(format!("{} Login with Steam", regular::STEAM_LOGO)).clicked() {
-                            // Open Steam login in new window
-                            let login_url = self.server_url.replace("/ws", "/auth/steam");
-                            let _ = web_sys::window()
-                                .and_then(|w| w.open_with_url(&login_url).ok());
-                        }
+                    if ui.button(format!("{} Login with Steam", regular::STEAM_LOGO)).clicked() {
+                        // Open Steam login - same origin
+                        let login_url = get_auth_url();
+                        let _ = web_sys::window()
+                            .and_then(|w| w.location().set_href(&login_url).ok());
                     }
                     
                     ui.add_space(8.0);
@@ -242,11 +279,54 @@ impl eframe::App for WasmApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.games.is_empty() {
                 ui.centered_and_justified(|ui| {
-                    if matches!(self.connection_state, ConnectionState::Authenticated(_)) {
-                        ui.spinner();
-                        ui.label("Loading games...");
-                    } else {
-                        ui.label("Connect and log in to view your games");
+                    match &self.connection_state {
+                        ConnectionState::Authenticated(user) => {
+                            if !self.games_loaded {
+                                ui.spinner();
+                                ui.label("Loading games...");
+                            } else {
+                                // Games loaded but empty - need to sync from Steam
+                                ui.vertical_centered(|ui| {
+                                    ui.label(format!("Welcome, {}!", user.display_name));
+                                    ui.add_space(8.0);
+                                    ui.label("No games found. Sync your Steam library to get started.");
+                                    ui.add_space(12.0);
+                                    if ui.button(format!("{} Sync from Steam", regular::ARROWS_CLOCKWISE)).clicked() {
+                                        if let Some(client) = &self.ws_client {
+                                            client.sync_from_steam();
+                                            self.status = "Syncing from Steam...".to_string();
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        ConnectionState::Connecting => {
+                            ui.spinner();
+                            ui.label("Connecting to server...");
+                        }
+                        ConnectionState::Connected => {
+                            if self.auth_token.is_some() {
+                                ui.spinner();
+                                ui.label("Authenticating...");
+                            } else {
+                                ui.vertical_centered(|ui| {
+                                    ui.label("Please log in with Steam to view your games");
+                                    ui.add_space(8.0);
+                                    if ui.button(format!("{} Login with Steam", regular::STEAM_LOGO)).clicked() {
+                                        let login_url = get_auth_url();
+                                        let _ = web_sys::window()
+                                            .and_then(|w| w.location().set_href(&login_url).ok());
+                                    }
+                                });
+                            }
+                        }
+                        ConnectionState::Error(e) => {
+                            ui.colored_label(egui::Color32::RED, format!("Error: {}", e));
+                        }
+                        ConnectionState::Disconnected => {
+                            ui.spinner();
+                            ui.label("Reconnecting...");
+                        }
                     }
                 });
             } else {
@@ -317,19 +397,35 @@ fn save_token_to_storage(token: &str) {
     }
 }
 
-fn get_server_url() -> Option<String> {
+/// Auto-detect WebSocket URL from current page location
+/// If page is served from https://example.com, connects to wss://example.com/ws
+/// If page is served from http://localhost:8080, connects to ws://localhost:8080/ws
+fn get_ws_url_from_location() -> String {
     web_sys::window()
-        .and_then(|w| w.local_storage().ok())
-        .flatten()
-        .and_then(|storage| storage.get_item("overachiever_server_url").ok())
-        .flatten()
+        .and_then(|w| {
+            let location = w.location();
+            let protocol = location.protocol().ok()?;
+            let host = location.host().ok()?;
+            
+            // Use wss for https, ws for http
+            let ws_protocol = if protocol == "https:" { "wss:" } else { "ws:" };
+            Some(format!("{}//{}/ws", ws_protocol, host))
+        })
+        .unwrap_or_else(|| "wss://overachiever.space/ws".to_string())
 }
 
-fn save_server_url(url: &str) {
-    if let Some(storage) = web_sys::window()
-        .and_then(|w| w.local_storage().ok())
-        .flatten()
-    {
-        let _ = storage.set_item("overachiever_server_url", url);
-    }
+/// Get auth URL from current page location
+fn get_auth_url() -> String {
+    web_sys::window()
+        .and_then(|w| {
+            let location = w.location();
+            let origin = location.origin().ok()?;
+            Some(format!("{}/auth/steam", origin))
+        })
+        .unwrap_or_else(|| "/auth/steam".to_string())
+}
+
+/// Log to browser console
+fn log(msg: &str) {
+    web_sys::console::log_1(&msg.into());
 }

@@ -26,6 +26,7 @@ use std::sync::Arc;
 pub struct AppState {
     pub db_pool: Pool,
     pub jwt_secret: String,
+    pub steam_api_key: Option<String>,
 }
 
 #[tokio::main]
@@ -58,9 +59,15 @@ async fn main() {
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| "dev-secret-change-in-production".to_string());
     
+    let steam_api_key = std::env::var("STEAM_API_KEY").ok();
+    if steam_api_key.is_none() {
+        tracing::warn!("STEAM_API_KEY not set - Steam sync will be disabled");
+    }
+    
     let state = Arc::new(AppState {
         db_pool,
         jwt_secret,
+        steam_api_key,
     });
     
     // Build router

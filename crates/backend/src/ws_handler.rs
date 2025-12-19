@@ -70,9 +70,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             
             ClientMessage::FetchGames => {
                 if let Some(ref steam_id) = authenticated_steam_id {
+                    tracing::debug!("Fetching games for steam_id: {}", steam_id);
                     match crate::db::get_user_games(&state.db_pool, steam_id).await {
-                        Ok(games) => ServerMessage::Games { games },
-                        Err(e) => ServerMessage::Error { message: e.to_string() }
+                        Ok(games) => {
+                            tracing::info!("Returning {} games for steam_id: {}", games.len(), steam_id);
+                            ServerMessage::Games { games }
+                        },
+                        Err(e) => {
+                            tracing::error!("Database error fetching games for {}: {:?}", steam_id, e);
+                            ServerMessage::Error { message: format!("Database error: {:?}", e) }
+                        }
                     }
                 } else {
                     ServerMessage::AuthError { reason: "Not authenticated".to_string() }
@@ -133,8 +140,37 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             }
             
             ClientMessage::SyncFromSteam => {
-                // TODO: Implement server-side Steam sync
-                ServerMessage::Error { message: "Steam sync not yet implemented".to_string() }
+                if let Some(ref steam_id) = authenticated_steam_id {
+                    if let Some(ref api_key) = state.steam_api_key {
+                        tracing::info!("Starting Steam sync for user {}", steam_id);
+                        let steam_id_u64: u64 = steam_id.parse().unwrap_or(0);
+                        
+                        match crate::steam_api::fetch_owned_games(api_key, steam_id_u64).await {
+                            Ok(games) => {
+                                tracing::info!("Fetched {} games from Steam for user {}", games.len(), steam_id);
+                                match crate::db::upsert_games(&state.db_pool, steam_id, &games).await {
+                                    Ok(count) => {
+                                        tracing::info!("Saved {} games for user {}", count, steam_id);
+                                        // Return the updated games list
+                                        match crate::db::get_user_games(&state.db_pool, steam_id).await {
+                                            Ok(user_games) => ServerMessage::Games { games: user_games },
+                                            Err(e) => ServerMessage::Error { message: format!("Failed to fetch games after sync: {:?}", e) }
+                                        }
+                                    }
+                                    Err(e) => ServerMessage::Error { message: format!("Failed to save games: {:?}", e) }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Steam API error for user {}: {:?}", steam_id, e);
+                                ServerMessage::Error { message: format!("Steam API error: {}", e) }
+                            }
+                        }
+                    } else {
+                        ServerMessage::Error { message: "Steam API key not configured on server".to_string() }
+                    }
+                } else {
+                    ServerMessage::AuthError { reason: "Not authenticated".to_string() }
+                }
             }
             
             ClientMessage::SubmitAchievementTip { .. } => {

@@ -54,10 +54,19 @@ pub async fn steam_callback(
     // TODO: Verify the OpenID response with Steam
     // TODO: Fetch user profile from Steam API
     
+    let display_name = format!("User {}", &steam_id[..8.min(steam_id.len())]);
+    
+    // Create/update user in database
+    if let Err(e) = crate::db::get_or_create_user(&state.db_pool, &steam_id, &display_name, None).await {
+        tracing::error!("Failed to create user {}: {:?}", steam_id, e);
+        return Redirect::temporary(&format!("/?error=db_error&details={}", urlencoding::encode(&format!("{:?}", e))));
+    }
+    tracing::info!("User {} created/updated successfully", steam_id);
+    
     // Create JWT token
     let claims = Claims {
         steam_id: steam_id.clone(),
-        display_name: format!("User {}", &steam_id[..8.min(steam_id.len())]),
+        display_name,
         avatar_url: None,
         exp: (chrono::Utc::now() + chrono::Duration::days(7)).timestamp() as usize,
     };

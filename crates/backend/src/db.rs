@@ -225,18 +225,57 @@ pub async fn get_or_create_user(
     let client = pool.get().await?;
     let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
     let now = Utc::now();
+    let avatar: Option<String> = avatar_url.map(|s| s.to_string());
     
     client.execute(
         r#"
-        INSERT INTO users (steam_id, display_name, avatar_url, created_at, last_login)
+        INSERT INTO users (steam_id, display_name, avatar_url, created_at, last_seen)
         VALUES ($1, $2, $3, $4, $4)
         ON CONFLICT (steam_id) DO UPDATE SET
             display_name = EXCLUDED.display_name,
             avatar_url = EXCLUDED.avatar_url,
-            last_login = EXCLUDED.last_login
+            last_seen = EXCLUDED.last_seen
         "#,
-        &[&steam_id_int, &display_name, &avatar_url, &now]
+        &[&steam_id_int, &display_name, &avatar, &now]
     ).await?;
     
     Ok(())
+}
+
+/// Insert or update games for a user
+pub async fn upsert_games(
+    pool: &Pool,
+    steam_id: &str,
+    games: &[overachiever_core::SteamGame],
+) -> Result<usize, DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
+    let now = Utc::now();
+    
+    let mut count = 0;
+    for game in games {
+        client.execute(
+            r#"
+            INSERT INTO user_games (steam_id, appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (steam_id, appid) DO UPDATE SET
+                name = EXCLUDED.name,
+                playtime_forever = EXCLUDED.playtime_forever,
+                rtime_last_played = EXCLUDED.rtime_last_played,
+                img_icon_url = EXCLUDED.img_icon_url
+            "#,
+            &[
+                &steam_id_int,
+                &(game.appid as i64),
+                &game.name,
+                &(game.playtime_forever as i32),
+                &game.rtime_last_played.map(|t| t as i32),
+                &game.img_icon_url,
+                &now,
+            ]
+        ).await?;
+        count += 1;
+    }
+    
+    Ok(count)
 }
