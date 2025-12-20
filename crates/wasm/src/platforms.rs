@@ -50,6 +50,9 @@ impl StatsPanelPlatform for WasmApp {
     }
     
     fn submit_achievement_rating(&mut self, appid: u64, apiname: String, rating: u8) {
+        // Store locally first for immediate UI feedback
+        self.user_achievement_ratings.insert((appid, apiname.clone()), rating);
+        
         // Submit via REST API (async, fire-and-forget)
         if let Some(token) = &self.auth_token {
             let token = token.clone();
@@ -64,6 +67,16 @@ impl StatsPanelPlatform for WasmApp {
                 }
             });
         }
+    }
+    
+    fn get_user_achievement_rating(&self, appid: u64, apiname: &str) -> Option<u8> {
+        self.user_achievement_ratings.get(&(appid, apiname.to_string())).copied()
+    }
+    
+    fn set_user_achievement_rating(&mut self, appid: u64, apiname: String, rating: u8) {
+        self.user_achievement_ratings.insert((appid, apiname.clone()), rating);
+        // Also submit to server
+        self.submit_achievement_rating(appid, apiname, rating);
     }
 }
 

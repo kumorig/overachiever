@@ -54,6 +54,14 @@ pub trait StatsPanelPlatform {
     /// Submit an achievement rating (1-5 stars)
     fn submit_achievement_rating(&mut self, _appid: u64, _apiname: String, _rating: u8) {}
     
+    /// Get the user's rating for an achievement (1-5 stars, or None if not rated)
+    fn get_user_achievement_rating(&self, _appid: u64, _apiname: &str) -> Option<u8> {
+        None
+    }
+    
+    /// Set the user's rating for an achievement (stores locally and submits to server)
+    fn set_user_achievement_rating(&mut self, _appid: u64, _apiname: String, _rating: u8) {}
+    
     /// Submit a comment for selected achievements
     fn submit_achievement_comment(&mut self, _comment: String) {}
     

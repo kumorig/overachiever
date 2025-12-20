@@ -7,6 +7,8 @@ use overachiever_core::{
     sort_games,
 };
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use crate::ws_client::WsClient;
 use crate::storage::{
@@ -67,6 +69,8 @@ pub struct WasmApp {
     pub(crate) sort_order: SortOrder,
     pub(crate) expanded_rows: HashSet<u64>,
     pub(crate) achievements_cache: HashMap<u64, Vec<GameAchievement>>,
+    pub(crate) user_achievement_ratings: HashMap<(u64, String), u8>, // (appid, apiname) -> rating
+    pub(crate) pending_ratings: Rc<RefCell<Option<Vec<(u64, String, u8)>>>>, // Incoming ratings from server
     pub(crate) filter_name: String,
     pub(crate) filter_achievements: TriFilter,
     pub(crate) filter_playtime: TriFilter,
@@ -117,6 +121,8 @@ impl WasmApp {
             sort_order: SortOrder::Ascending,
             expanded_rows: HashSet::new(),
             achievements_cache: HashMap::new(),
+            user_achievement_ratings: HashMap::new(),
+            pending_ratings: Rc::new(RefCell::new(None)),
             filter_name: String::new(),
             filter_achievements: TriFilter::All,
             filter_playtime: TriFilter::All,
@@ -188,6 +194,36 @@ impl WasmApp {
         }
     }
     
+    /// Fetch user's saved achievement ratings from the server (async)
+    fn fetch_user_ratings(&self) {
+        if let Some(token) = &self.auth_token {
+            let token = token.clone();
+            let pending = self.pending_ratings.clone();
+            
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::http_client::fetch_user_achievement_ratings(&token).await {
+                    Ok(ratings) => {
+                        *pending.borrow_mut() = Some(ratings);
+                        web_sys::console::log_1(&format!("Loaded {} achievement ratings from server", 
+                            pending.borrow().as_ref().map_or(0, |r| r.len())).into());
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(&format!("Failed to fetch achievement ratings: {}", e).into());
+                    }
+                }
+            });
+        }
+    }
+    
+    /// Process any pending ratings from async fetch
+    fn process_pending_ratings(&mut self) {
+        if let Some(ratings) = self.pending_ratings.borrow_mut().take() {
+            for (appid, apiname, rating) in ratings {
+                self.user_achievement_ratings.insert((appid, apiname), rating);
+            }
+        }
+    }
+    
     pub(crate) fn check_messages(&mut self) {
         let messages = if let Some(client) = &self.ws_client {
             client.poll_messages()
@@ -210,6 +246,9 @@ impl WasmApp {
                         client.fetch_games();
                         client.fetch_history();
                     }
+                    
+                    // Fetch saved achievement ratings
+                    self.fetch_user_ratings();
                 }
                 overachiever_core::ServerMessage::AuthError { reason } => {
                     self.connection_state = ConnectionState::Error(reason.clone());
@@ -314,6 +353,7 @@ impl eframe::App for WasmApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.check_ws_state();
         self.check_messages();
+        self.process_pending_ratings();
         
         if matches!(self.connection_state, ConnectionState::Disconnected) {
             self.connect();

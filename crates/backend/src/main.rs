@@ -83,6 +83,7 @@ async fn main() {
         .route("/api/community/ratings", post(routes::submit_rating))
         // Achievement rating/comment endpoints
         .route("/api/achievement/rating", post(routes::submit_achievement_rating))
+        .route("/api/achievement/ratings", get(routes::get_user_achievement_ratings))
         .route("/api/achievement/comment", post(routes::submit_achievement_comment))
         // Auth
         .route("/auth/steam", get(auth::steam_login))

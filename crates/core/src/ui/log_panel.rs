@@ -40,8 +40,10 @@ fn instant_tooltip(response: &Response, text: impl Into<String>) {
     }
 }
 
-/// Render a 5-star rating widget. Returns Some(rating) if clicked.
-fn star_rating_widget(ui: &mut Ui, id: egui::Id) -> Option<u8> {
+/// Render a 5-star rating widget with current rating displayed.
+/// Returns Some(rating) if clicked.
+fn star_rating_widget(ui: &mut Ui, current_rating: Option<u8>) -> Option<u8> {
+    let gold = Color32::from_rgb(255, 215, 0);
     let mut clicked_rating: Option<u8> = None;
     
     // Calculate hover state for all stars
@@ -69,12 +71,18 @@ fn star_rating_widget(ui: &mut Ui, id: egui::Id) -> Option<u8> {
         let x = start_pos.x + i as f32 * (STAR_SIZE + STAR_SPACING);
         let center = egui::pos2(x + STAR_SIZE / 2.0, start_pos.y + STAR_SIZE / 2.0);
         
+        // Determine star color: hover > current rating > empty
+        let is_filled = current_rating.map(|r| star_num <= r).unwrap_or(false);
         let color = if let Some(hover) = hover_star {
             if star_num <= hover {
                 star_color_hover()
+            } else if is_filled {
+                gold
             } else {
                 STAR_COLOR_EMPTY
             }
+        } else if is_filled {
+            gold
         } else {
             STAR_COLOR_EMPTY
         };
@@ -95,9 +103,6 @@ fn star_rating_widget(ui: &mut Ui, id: egui::Id) -> Option<u8> {
             clicked_rating = Some(rating);
         }
     }
-    
-    // Suppress unused variable warning
-    let _ = id;
     
     clicked_rating
 }
@@ -212,9 +217,9 @@ pub fn render_log<P: StatsPanelPlatform>(ui: &mut Ui, platform: &mut P) {
                     
                     // Star rating (inline after achievement name)
                     ui.add_space(8.0);
-                    let star_id = egui::Id::new(("star_rating", appid, apiname));
-                    if let Some(rating) = star_rating_widget(ui, star_id) {
-                        platform.submit_achievement_rating(*appid, apiname.clone(), rating);
+                    let current_rating = platform.get_user_achievement_rating(*appid, apiname);
+                    if let Some(rating) = star_rating_widget(ui, current_rating) {
+                        platform.set_user_achievement_rating(*appid, apiname.clone(), rating);
                     }
                 });
             }

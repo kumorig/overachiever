@@ -111,14 +111,64 @@ pub async fn submit_achievement_rating(
         "Achievement rating submitted via REST"
     );
     
-    // TODO: Store rating in database
-    // For now, just log and return success
+    // Store rating in database
+    if let Err(e) = crate::db::upsert_achievement_rating(
+        &state.db_pool,
+        &claims.steam_id,
+        body.appid,
+        &body.apiname,
+        body.rating,
+    ).await {
+        tracing::error!("Failed to store achievement rating: {:?}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Failed to store rating"}))
+        ));
+    }
     
     Ok(Json(AchievementRatingResponse {
         success: true,
         appid: body.appid,
         apiname: body.apiname,
     }))
+}
+
+/// Response format for user's achievement ratings
+#[derive(serde::Serialize)]
+pub struct UserAchievementRatingsResponse {
+    pub ratings: Vec<AchievementRatingEntry>,
+}
+
+#[derive(serde::Serialize)]
+pub struct AchievementRatingEntry {
+    pub appid: u64,
+    pub apiname: String,
+    pub rating: u8,
+}
+
+/// Get all achievement ratings for the authenticated user
+pub async fn get_user_achievement_ratings(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<UserAchievementRatingsResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let claims = extract_user(&headers, &state.jwt_secret)?;
+    
+    match crate::db::get_user_achievement_ratings(&state.db_pool, &claims.steam_id).await {
+        Ok(ratings) => {
+            let entries: Vec<AchievementRatingEntry> = ratings
+                .into_iter()
+                .map(|(appid, apiname, rating)| AchievementRatingEntry { appid, apiname, rating })
+                .collect();
+            Ok(Json(UserAchievementRatingsResponse { ratings: entries }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch user achievement ratings: {:?}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to fetch ratings"}))
+            ))
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]

@@ -83,6 +83,36 @@ pub async fn submit_achievement_comment(
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
+/// Fetch all achievement ratings for the current user
+pub async fn fetch_user_achievement_ratings(
+    token: &str,
+) -> Result<Vec<(u64, String, u8)>, String> {
+    let origin = web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_default();
+    
+    let url = format!("{}/api/achievement/ratings", origin);
+    
+    let response = Request::get(&url)
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+    
+    if !response.ok() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Request failed with status {}: {}", status, text));
+    }
+    
+    let result = response
+        .json::<UserAchievementRatingsResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    
+    Ok(result.ratings.into_iter().map(|r| (r.appid, r.apiname, r.rating)).collect())
+}
+
 // Request/Response types (matching backend)
 
 #[derive(Serialize)]
@@ -109,4 +139,16 @@ struct AchievementCommentRequest {
 pub struct AchievementCommentResponse {
     pub success: bool,
     pub count: usize,
+}
+
+#[derive(Deserialize)]
+struct UserAchievementRatingsResponse {
+    ratings: Vec<AchievementRatingEntry>,
+}
+
+#[derive(Deserialize)]
+struct AchievementRatingEntry {
+    appid: u64,
+    apiname: String,
+    rating: u8,
 }

@@ -482,3 +482,55 @@ pub async fn get_log_entries(pool: &Pool, steam_id: &str, limit: i32) -> Result<
     
     Ok(entries)
 }
+
+/// Upsert an achievement rating for a user
+pub async fn upsert_achievement_rating(
+    pool: &Pool,
+    steam_id: &str,
+    appid: u64,
+    apiname: &str,
+    rating: u8,
+) -> Result<(), DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
+    
+    client.execute(
+        r#"
+        INSERT INTO achievement_ratings (steam_id, appid, apiname, rating)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (steam_id, appid, apiname)
+        DO UPDATE SET rating = $4, updated_at = NOW()
+        "#,
+        &[&steam_id_int, &(appid as i64), &apiname, &(rating as i16)]
+    ).await?;
+    
+    Ok(())
+}
+
+/// Get all achievement ratings for a user
+pub async fn get_user_achievement_ratings(
+    pool: &Pool,
+    steam_id: &str,
+) -> Result<Vec<(u64, String, u8)>, DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
+    
+    let rows = client.query(
+        r#"
+        SELECT appid, apiname, rating
+        FROM achievement_ratings
+        WHERE steam_id = $1
+        "#,
+        &[&steam_id_int]
+    ).await?;
+    
+    let ratings = rows.into_iter().map(|row| {
+        (
+            row.get::<_, i64>("appid") as u64,
+            row.get::<_, String>("apiname"),
+            row.get::<_, i16>("rating") as u8,
+        )
+    }).collect();
+    
+    Ok(ratings)
+}

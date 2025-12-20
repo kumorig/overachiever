@@ -475,7 +475,7 @@ pub fn render_games_table<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P, 
 }
 
 /// Render the achievements list for an expanded game row
-fn render_achievements_list<P: GamesTablePlatform>(ui: &mut Ui, platform: &P, appid: u64) {
+fn render_achievements_list<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P, appid: u64) {
     if let Some(achievements) = platform.get_cached_achievements(appid) {
         ui.add_space(4.0);
         ui.separator();
@@ -491,16 +491,23 @@ fn render_achievements_list<P: GamesTablePlatform>(ui: &mut Ui, platform: &P, ap
             }
         });
         
+        // Collect data we need to avoid borrow issues
+        let ach_data: Vec<_> = sorted_achs.iter().map(|ach| {
+            (
+                ach.apiname.clone(),
+                ach.name.clone(),
+                ach.achieved,
+                if ach.achieved { ach.icon.clone() } else { ach.icon_gray.clone() },
+                ach.description.clone(),
+                ach.unlocktime,
+            )
+        }).collect();
+        
         egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            for (i, ach) in sorted_achs.iter().enumerate() {
-                let icon_url = if ach.achieved {
-                    &ach.icon
-                } else {
-                    &ach.icon_gray
-                };
-                
+            for (i, (apiname, name, achieved, icon_url, description, unlocktime)) in ach_data.iter().enumerate() {
                 let image_source = platform.achievement_icon_source(ui, icon_url);
+                let user_rating = platform.get_user_achievement_rating(appid, apiname);
                 
                 // Alternate row background
                 let row_rect = ui.available_rect_before_wrap();
@@ -523,14 +530,14 @@ fn render_achievements_list<P: GamesTablePlatform>(ui: &mut Ui, platform: &P, ap
                             .corner_radius(4.0)
                     );
                     
-                    let name_text = if ach.achieved {
-                        RichText::new(&ach.name).color(Color32::WHITE)
+                    let name_text = if *achieved {
+                        RichText::new(name).color(Color32::WHITE)
                     } else {
-                        RichText::new(&ach.name).color(Color32::DARK_GRAY)
+                        RichText::new(name).color(Color32::DARK_GRAY)
                     };
                     
-                    let description_text = ach.description.as_deref().unwrap_or("");
-                    let desc_color = if ach.achieved {
+                    let description_text = description.as_deref().unwrap_or("");
+                    let desc_color = if *achieved {
                         Color32::GRAY
                     } else {
                         Color32::from_rgb(80, 80, 80)
@@ -538,11 +545,15 @@ fn render_achievements_list<P: GamesTablePlatform>(ui: &mut Ui, platform: &P, ap
                     
                     ui.vertical(|ui| {
                         ui.add_space(4.0);
-                        // Top row: name and date
+                        // Top row: name and date/stars
                         ui.horizontal(|ui| {
                             ui.label(name_text);
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if let Some(unlock_dt) = &ach.unlocktime {
+                                // Show compact average rating (read-only)
+                                render_compact_avg_rating(ui, user_rating);
+                                
+                                if let Some(unlock_dt) = unlocktime {
+                                    ui.add_space(8.0);
                                     ui.label(
                                         RichText::new(unlock_dt.format("%Y-%m-%d").to_string())
                                             .color(Color32::from_rgb(100, 200, 100))
@@ -561,5 +572,25 @@ fn render_achievements_list<P: GamesTablePlatform>(ui: &mut Ui, platform: &P, ap
     } else {
         ui.spinner();
         ui.label("Loading achievements...");
+    }
+}
+
+/// Render compact average rating display (read-only, no interaction)
+/// Shows filled/empty stars based on average rating, or nothing if no rating
+fn render_compact_avg_rating(ui: &mut Ui, avg_rating: Option<u8>) {
+    let Some(rating) = avg_rating else {
+        return; // Don't show anything if no rating
+    };
+    
+    let gold = Color32::from_rgb(255, 215, 0);
+    let gray = Color32::from_rgb(80, 80, 80);
+    
+    // Compact display: just show the stars inline (right to left)
+    for star in (1..=5).rev() {
+        let is_filled = star <= rating;
+        let star_char = if is_filled { "★" } else { "☆" };
+        let color = if is_filled { gold } else { gray };
+        
+        ui.label(RichText::new(star_char).color(color).size(10.0));
     }
 }
