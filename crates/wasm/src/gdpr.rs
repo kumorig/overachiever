@@ -29,7 +29,7 @@ impl WasmApp {
             });
         
         // Modal window
-        egui::Window::new(format!("{} Privacy & Data Usage", regular::SHIELD_CHECK))
+        egui::Window::new(format!("{} Privacy & Data Usage (GDPR)", regular::SHIELD_CHECK))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])

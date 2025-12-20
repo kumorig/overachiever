@@ -225,6 +225,10 @@ impl WasmApp {
                     self.app_state = AppState::Idle;
                     self.status = format!("Loaded {} games", self.games.len());
                     sort_games(&mut self.games, self.sort_column, self.sort_order);
+                    // Refresh history (run_history may have been recorded on sync)
+                    if let Some(client) = &self.ws_client {
+                        client.fetch_history();
+                    }
                 }
                 overachiever_core::ServerMessage::Achievements { appid, achievements } => {
                     self.achievements_cache.insert(appid, achievements);

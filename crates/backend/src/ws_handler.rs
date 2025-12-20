@@ -181,9 +181,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         tracing::info!("Found {} recently played games for user {}", recent_appids.len(), steam_id);
                         
                         if recent_appids.is_empty() {
-                            // No recently played games, just return the games list
+                            // No recently played games, return sync complete with just the games
                             match crate::db::get_user_games(&state.db_pool, steam_id).await {
-                                Ok(user_games) => ServerMessage::Games { games: user_games },
+                                Ok(user_games) => {
+                                    let result = overachiever_core::SyncResult {
+                                        games_updated: game_count,
+                                        achievements_updated: 0,
+                                        new_games: 0,
+                                    };
+                                    ServerMessage::SyncComplete { result, games: user_games }
+                                }
                                 Err(e) => ServerMessage::Error { message: format!("Failed to fetch games: {:?}", e) }
                             }
                         } else {

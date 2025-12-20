@@ -364,28 +364,132 @@ fn render_current_stats<P: StatsPanelPlatform>(ui: &mut Ui, platform: &mut P) {
     });
 }
 
-/// Render the breakdown section with game counts
-pub fn render_breakdown<P: StatsPanelPlatform>(ui: &mut Ui, platform: &P) {
+/// Render the breakdown section with game counts and current stats
+pub fn render_breakdown<P: StatsPanelPlatform>(ui: &mut Ui, platform: &mut P) {
     ui.heading(format!("{} Breakdown", regular::GAME_CONTROLLER));
     ui.separator();
     
-    let games = platform.games();
-    
-    if games.is_empty() {
-        ui.label("Sync your games to see stats.");
-        return;
-    }
+    // Collect all data we need from games upfront to avoid borrow issues
+    let (
+        games_len,
+        total_with_ach,
+        total_achievements,
+        unlocked_achievements,
+        unplayed_count,
+        completion_percents_with_unplayed,
+        completion_percents_played_only,
+        completed_count,
+        needs_scan,
+    ) = {
+        let games = platform.games();
+        
+        if games.is_empty() {
+            ui.label("Sync your games to see stats.");
+            return;
+        }
+        
+        let games_with_ach: Vec<_> = games.iter()
+            .filter(|g| g.achievements_total.map(|t| t > 0).unwrap_or(false))
+            .collect();
+        
+        let total_ach: i32 = games_with_ach.iter()
+            .filter_map(|g| g.achievements_total)
+            .sum();
+        let unlocked_ach: i32 = games_with_ach.iter()
+            .filter_map(|g| g.achievements_unlocked)
+            .sum();
+        
+        let percents_with_unplayed: Vec<f32> = games_with_ach.iter()
+            .filter_map(|g| g.completion_percent())
+            .collect();
+        let percents_played_only: Vec<f32> = games_with_ach.iter()
+            .filter(|g| g.playtime_forever > 0)
+            .filter_map(|g| g.completion_percent())
+            .collect();
+        
+        let unplayed = games_with_ach.len() - games_with_ach.iter()
+            .filter(|g| g.playtime_forever > 0)
+            .count();
+        
+        let completed = games.iter()
+            .filter(|g| g.completion_percent().map(|p| p >= 100.0).unwrap_or(false))
+            .count();
+        let needs = games.iter().filter(|g| g.achievements_total.is_none()).count();
+        
+        (
+            games.len(),
+            games_with_ach.len(),
+            total_ach,
+            unlocked_ach,
+            unplayed,
+            percents_with_unplayed,
+            percents_played_only,
+            completed,
+            needs,
+        )
+    };
     
     let yellow = Color32::from_rgb(255, 215, 0);
     
-    let games_with_ach: Vec<_> = games.iter()
-        .filter(|g| g.achievements_total.map(|t| t > 0).unwrap_or(false))
-        .collect();
-    let total_with_ach = games_with_ach.len();
+    // === Current stats (Total achievements, Avg completion, Unplayed) ===
+    
+    let overall_pct = if total_achievements > 0 {
+        unlocked_achievements as f32 / total_achievements as f32 * 100.0
+    } else {
+        0.0
+    };
+    
+    ui.horizontal(|ui| {
+        ui.label("Total achievements:");
+        ui.label(RichText::new(format!("{}", unlocked_achievements)).color(yellow).strong());
+        ui.label("/");
+        ui.label(RichText::new(format!("{}", total_achievements)).color(yellow).strong());
+        ui.label("(");
+        ui.label(RichText::new(format!("{:.1}%", overall_pct)).color(yellow).strong());
+        ui.label(")");
+    });
+    
+    let include_unplayed = platform.include_unplayed_in_avg();
+    let completion_percents = if include_unplayed {
+        &completion_percents_with_unplayed
+    } else {
+        &completion_percents_played_only
+    };
+    
+    let current_avg = if completion_percents.is_empty() {
+        0.0
+    } else {
+        completion_percents.iter().sum::<f32>() / completion_percents.len() as f32
+    };
+    
+    // Calculate unplayed percentage
+    let unplayed_pct = if total_with_ach > 0 {
+        unplayed_count as f32 / total_with_ach as f32 * 100.0
+    } else {
+        0.0
+    };
+    
+    ui.horizontal(|ui| {
+        ui.label("Avg. game completion:");
+        ui.label(RichText::new(format!("{:.1}%", current_avg)).color(yellow).strong());
+        let mut include = include_unplayed;
+        if ui.checkbox(&mut include, "Include unplayed").changed() {
+            platform.set_include_unplayed_in_avg(include);
+        }
+    });
+    
+    // Show unplayed games count and percentage
+    ui.horizontal(|ui| {
+        ui.label("Unplayed games:");
+        ui.label(RichText::new(format!("{}", unplayed_count)).color(yellow).strong());
+        ui.label("(");
+        ui.label(RichText::new(format!("{:.1}%", unplayed_pct)).color(yellow).strong());
+        ui.label(")");
+    });
     
     ui.horizontal(|ui| {
         ui.label("Total games:");
-        ui.label(RichText::new(format!("{}", games.len())).color(yellow).strong());
+        ui.label(RichText::new(format!("{}", games_len)).color(yellow).strong());
     });
     
     ui.horizontal(|ui| {
@@ -393,15 +497,11 @@ pub fn render_breakdown<P: StatsPanelPlatform>(ui: &mut Ui, platform: &P) {
         ui.label(RichText::new(format!("{}", total_with_ach)).color(yellow).strong());
     });
     
-    let completed = games.iter()
-        .filter(|g| g.completion_percent().map(|p| p >= 100.0).unwrap_or(false))
-        .count();
     ui.horizontal(|ui| {
         ui.label(format!("{} 100% completed:", regular::MEDAL));
-        ui.label(RichText::new(format!("{}", completed)).color(yellow).strong());
+        ui.label(RichText::new(format!("{}", completed_count)).color(yellow).strong());
     });
     
-    let needs_scan = games.iter().filter(|g| g.achievements_total.is_none()).count();
     if needs_scan > 0 {
         ui.horizontal(|ui| {
             ui.label("Needs scanning:");

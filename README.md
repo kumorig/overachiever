@@ -1,15 +1,18 @@
-# Overachiever v3
+# Overachiever - Achievement Progress Tracker for Steam Games
 
 An application for tracking your Steam game library and achievement progress over time. 
 
+### Screenshot
+
+![Overachiever screenshot](assets/screen.png)
+
 Demo: https://overachiever.space
 
-
-This project is in no way affiliated with or endorsed by Valve Corporation.
+This project is not affiliated with steam or endorsed by Valve Corporation in any way or form.
 
 
 ## Setup
-For it to work, you need to provide your Steam API key and Steam ID. You can configure these in the app by clicking the ⚙ (settings) button in the top-right corner.
+For this to work locally, you need to provide your Steam API key and Steam ID. You can configure these in the app by clicking the ⚙ (settings) button in the top-right corner.
 
 To get a Steam API key, visit [Steam Web API Key](https://steamcommunity.com/dev/apikey) and register (free).
 
