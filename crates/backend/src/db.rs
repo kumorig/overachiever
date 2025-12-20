@@ -456,7 +456,7 @@ pub async fn get_log_entries(pool: &Pool, steam_id: &str, limit: i32) -> Result<
     // Get recently unlocked achievements with game and schema info
     let rows = client.query(
         r#"
-        SELECT ua.appid, g.name as game_name, s.display_name as achievement_name, 
+        SELECT ua.appid, g.name as game_name, ua.apiname, s.display_name as achievement_name, 
                ua.unlocktime, s.icon as achievement_icon, g.img_icon_url as game_icon_url
         FROM user_achievements ua
         JOIN user_games g ON ua.steam_id = g.steam_id AND ua.appid = g.appid
@@ -472,6 +472,7 @@ pub async fn get_log_entries(pool: &Pool, steam_id: &str, limit: i32) -> Result<
         LogEntry::Achievement {
             appid: row.get::<_, i64>("appid") as u64,
             game_name: row.get("game_name"),
+            apiname: row.get("apiname"),
             achievement_name: row.get::<_, Option<String>>("achievement_name").unwrap_or_else(|| "Unknown".to_string()),
             timestamp: row.get("unlocktime"),
             achievement_icon: row.get::<_, Option<String>>("achievement_icon").unwrap_or_default(),

@@ -603,7 +603,7 @@ pub fn get_game_achievements(conn: &Connection, steam_id: &str, appid: u64) -> R
 /// Get recently unlocked achievements (with game name)
 pub fn get_recent_achievements(conn: &Connection, steam_id: &str, limit: i32) -> Result<Vec<RecentAchievement>> {
     let mut stmt = conn.prepare(
-        "SELECT a.appid, g.name, a.name, a.unlocktime, a.icon, g.img_icon_url
+        "SELECT a.appid, g.name, a.apiname, a.name, a.unlocktime, a.icon, g.img_icon_url
          FROM achievements a
          JOIN games g ON a.steam_id = g.steam_id AND a.appid = g.appid
          WHERE a.steam_id = ?1 AND a.achieved = 1 AND a.unlocktime IS NOT NULL
@@ -612,7 +612,7 @@ pub fn get_recent_achievements(conn: &Connection, steam_id: &str, limit: i32) ->
     )?;
     
     let achievements = stmt.query_map(rusqlite::params![steam_id, limit], |row| {
-        let unlocktime_unix: i64 = row.get(3)?;
+        let unlocktime_unix: i64 = row.get(4)?;
         let unlocktime = chrono::DateTime::from_timestamp(unlocktime_unix, 0)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|| Utc::now());
@@ -620,10 +620,11 @@ pub fn get_recent_achievements(conn: &Connection, steam_id: &str, limit: i32) ->
         Ok(RecentAchievement {
             appid: row.get(0)?,
             game_name: row.get(1)?,
-            achievement_name: row.get(2)?,
+            apiname: row.get(2)?,
+            achievement_name: row.get(3)?,
             unlocktime,
-            achievement_icon: row.get(4)?,
-            game_icon_url: row.get(5)?,
+            achievement_icon: row.get(5)?,
+            game_icon_url: row.get(6)?,
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -682,6 +683,7 @@ pub fn get_log_entries(conn: &Connection, steam_id: &str, limit: i32) -> Result<
         entries.push(LogEntry::Achievement {
             appid: ach.appid,
             game_name: ach.game_name,
+            apiname: ach.apiname,
             achievement_name: ach.achievement_name,
             timestamp: ach.unlocktime,
             achievement_icon: ach.achievement_icon,

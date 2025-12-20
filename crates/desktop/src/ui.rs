@@ -44,56 +44,8 @@ impl AppState {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum SortColumn {
-    Name,
-    LastPlayed,
-    Playtime,
-    AchievementsTotal,
-    AchievementsPercent,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum SortOrder {
-    Ascending,
-    Descending,
-}
-
-impl SortOrder {
-    pub fn toggle(&self) -> Self {
-        match self {
-            SortOrder::Ascending => SortOrder::Descending,
-            SortOrder::Descending => SortOrder::Ascending,
-        }
-    }
-}
-
-/// Tri-state filter: All, Only With, Only Without
-#[derive(Clone, Copy, PartialEq, Default)]
-pub enum TriFilter {
-    #[default]
-    All,
-    With,
-    Without,
-}
-
-impl TriFilter {
-    pub fn cycle(&self) -> Self {
-        match self {
-            TriFilter::All => TriFilter::With,
-            TriFilter::With => TriFilter::Without,
-            TriFilter::Without => TriFilter::All,
-        }
-    }
-    
-    pub fn label(&self, with_text: &str, without_text: &str) -> String {
-        match self {
-            TriFilter::All => "All".to_string(),
-            TriFilter::With => with_text.to_string(),
-            TriFilter::Without => without_text.to_string(),
-        }
-    }
-}
+// Re-export shared types from core
+pub use overachiever_core::{SortColumn, SortOrder, TriFilter};
 
 #[allow(dead_code)]
 pub enum ProgressReceiver {

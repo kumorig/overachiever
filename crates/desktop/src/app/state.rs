@@ -4,7 +4,6 @@ use crate::db::{get_run_history, get_achievement_history, get_log_entries, inser
 use crate::steam_api::{FetchProgress, ScrapeProgress, UpdateProgress};
 use crate::ui::{AppState, SortColumn, SortOrder, ProgressReceiver, FLASH_DURATION};
 
-use egui_phosphor::regular;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
@@ -48,27 +47,6 @@ impl SteamOverachieverApp {
                     if order == SortOrder::Descending { cmp.reverse() } else { cmp }
                 });
             }
-        }
-    }
-    
-    pub(crate) fn set_sort(&mut self, column: SortColumn) {
-        if self.sort_column == column {
-            self.sort_order = self.sort_order.toggle();
-        } else {
-            self.sort_column = column;
-            self.sort_order = SortOrder::Ascending;
-        }
-        self.sort_games();
-    }
-    
-    pub(crate) fn sort_indicator(&self, column: SortColumn) -> String {
-        if self.sort_column == column {
-            match self.sort_order {
-                SortOrder::Ascending => format!(" {}", regular::SORT_ASCENDING),
-                SortOrder::Descending => format!(" {}", regular::SORT_DESCENDING),
-            }
-        } else {
-            String::new()
         }
     }
     

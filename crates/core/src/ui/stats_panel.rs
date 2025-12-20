@@ -1,6 +1,6 @@
 //! Stats panel - shared between desktop and WASM
 //! 
-//! Renders: Games over time graph, achievement progress, breakdown stats, activity log
+//! Renders: Games over time graph, achievement progress, breakdown stats
 
 use egui::{self, Color32, RichText, Ui};
 use egui_plot::{Line, Plot, PlotPoints};
@@ -34,6 +34,34 @@ pub trait StatsPanelPlatform {
     
     /// Resolve an achievement icon URL to an ImageSource
     fn achievement_icon_source(&self, ui: &Ui, icon_url: &str) -> egui::ImageSource<'static>;
+    
+    // ========================================================================
+    // Achievement rating and selection (optional - default implementations)
+    // ========================================================================
+    
+    /// Check if an achievement is selected (for multi-select commenting)
+    fn is_achievement_selected(&self, _appid: u64, _apiname: &str) -> bool { false }
+    
+    /// Toggle achievement selection
+    fn toggle_achievement_selection(&mut self, _appid: u64, _apiname: String, _name: String) {}
+    
+    /// Get all selected achievements as (appid, apiname, name) tuples
+    fn selected_achievements(&self) -> Vec<(u64, String, String)> { Vec::new() }
+    
+    /// Clear all selections
+    fn clear_achievement_selections(&mut self) {}
+    
+    /// Submit an achievement rating (1-5 stars)
+    fn submit_achievement_rating(&mut self, _appid: u64, _apiname: String, _rating: u8) {}
+    
+    /// Submit a comment for selected achievements
+    fn submit_achievement_comment(&mut self, _comment: String) {}
+    
+    /// Get the current comment text being edited
+    fn pending_comment(&self) -> &str { "" }
+    
+    /// Set the pending comment text
+    fn set_pending_comment(&mut self, _comment: String) {}
 }
 
 /// Configuration for how the stats panel should render
@@ -92,8 +120,6 @@ pub fn render_stats_content<P: StatsPanelPlatform>(
     render_achievement_progress(ui, platform, config);
     ui.add_space(16.0);
     render_breakdown(ui, platform);
-    ui.add_space(16.0);
-    render_log(ui, platform);
 }
 
 /// Render the "Games Over Time" graph
@@ -382,94 +408,4 @@ pub fn render_breakdown<P: StatsPanelPlatform>(ui: &mut Ui, platform: &P) {
             ui.label(RichText::new(format!("{}", needs_scan)).color(Color32::LIGHT_GRAY));
         });
     }
-}
-
-/// Render the activity log (achievements and first plays)
-pub fn render_log<P: StatsPanelPlatform>(ui: &mut Ui, platform: &P) {
-    // Colors for different elements
-    let date_color = Color32::from_rgb(130, 130, 130);  // Gray for dates
-    let game_color = Color32::from_rgb(100, 180, 255);  // Blue for game names
-    let achievement_color = Color32::from_rgb(255, 215, 0);  // Gold for achievement names
-    let alt_bg = Color32::from_rgba_unmultiplied(255, 255, 255, 8);  // Subtle alternating bg
-    
-    ui.collapsing(format!("{} Log", regular::SCROLL), |ui| {
-        let log_entries = platform.log_entries();
-        
-        if log_entries.is_empty() {
-            ui.label("No activity yet.");
-            return;
-        }
-        
-        for (i, entry) in log_entries.iter().enumerate() {
-            // Alternating background
-            let row_rect = ui.available_rect_before_wrap();
-            let row_rect = egui::Rect::from_min_size(
-                row_rect.min,
-                egui::vec2(row_rect.width(), 24.0)
-            );
-            if i % 2 == 1 {
-                ui.painter().rect_filled(row_rect, 2.0, alt_bg);
-            }
-            
-            match entry {
-                LogEntry::Achievement { appid, game_name, achievement_name, timestamp, achievement_icon, game_icon_url } => {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        
-                        // Game icon (left)
-                        if let Some(icon_hash) = game_icon_url {
-                            if !icon_hash.is_empty() {
-                                let img_source = platform.game_icon_source(ui, *appid, icon_hash);
-                                ui.add(
-                                    egui::Image::new(img_source)
-                                        .fit_to_exact_size(egui::vec2(18.0, 18.0))
-                                        .corner_radius(2.0)
-                                );
-                            }
-                        }
-                        
-                        // Achievement icon (right of game icon)
-                        if !achievement_icon.is_empty() {
-                            let img_source = platform.achievement_icon_source(ui, achievement_icon);
-                            ui.add(
-                                egui::Image::new(img_source)
-                                    .fit_to_exact_size(egui::vec2(18.0, 18.0))
-                                    .corner_radius(2.0)
-                            );
-                        }
-                        
-                        ui.label(RichText::new(timestamp.format("%Y-%m-%d").to_string()).color(date_color).small());
-                        ui.label(RichText::new(achievement_name).color(achievement_color).strong());
-                        ui.label(RichText::new("in").small());
-                        ui.label(RichText::new(format!("{}!", game_name)).color(game_color));
-                    });
-                }
-                LogEntry::FirstPlay { appid, game_name, timestamp, game_icon_url } => {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        
-                        // Game icon
-                        if let Some(icon_hash) = game_icon_url {
-                            if !icon_hash.is_empty() {
-                                let img_source = platform.game_icon_source(ui, *appid, icon_hash);
-                                ui.add(
-                                    egui::Image::new(img_source)
-                                        .fit_to_exact_size(egui::vec2(18.0, 18.0))
-                                        .corner_radius(2.0)
-                                );
-                            } else {
-                                ui.add_space(22.0);
-                            }
-                        } else {
-                            ui.add_space(22.0);
-                        }
-                        
-                        ui.label(RichText::new(timestamp.format("%Y-%m-%d").to_string()).color(date_color).small());
-                        ui.label(RichText::new(game_name).color(game_color));
-                        ui.label(RichText::new("played for the first time!").small());
-                    });
-                }
-            }
-        }
-    });
 }

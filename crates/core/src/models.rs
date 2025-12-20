@@ -144,6 +144,7 @@ pub struct AchievementHistory {
 pub struct RecentAchievement {
     pub appid: u64,
     pub game_name: String,
+    pub apiname: String,
     pub achievement_name: String,
     pub unlocktime: DateTime<Utc>,
     pub achievement_icon: String,
@@ -165,6 +166,7 @@ pub struct FirstPlay {
 pub enum LogEntry {
     Achievement {
         appid: u64,
+        apiname: String,
         game_name: String,
         achievement_name: String,
         timestamp: DateTime<Utc>,
@@ -213,6 +215,28 @@ pub struct AchievementTip {
     pub apiname: String,
     pub difficulty: u8,       // 1-5
     pub tip: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Achievement rating submitted by a user
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AchievementRating {
+    pub id: Option<i64>,
+    pub steam_id: String,
+    pub appid: u64,
+    pub apiname: String,
+    pub rating: u8,           // 1-5 stars
+    pub created_at: DateTime<Utc>,
+}
+
+/// Achievement comment that can tag multiple achievements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AchievementComment {
+    pub id: Option<i64>,
+    pub steam_id: String,
+    /// List of (appid, apiname) tuples for tagged achievements
+    pub achievements: Vec<(u64, String)>,
+    pub comment: String,
     pub created_at: DateTime<Utc>,
 }
 

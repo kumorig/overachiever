@@ -411,6 +411,26 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 // TODO: Implement tip submission
                 ServerMessage::Error { message: "Tip submission not yet implemented".to_string() }
             }
+            
+            ClientMessage::SubmitAchievementRating { appid, apiname, rating } => {
+                if let Some(ref steam_id) = authenticated_steam_id {
+                    tracing::info!(steam_id = %steam_id, appid = %appid, apiname = %apiname, rating = %rating, "Achievement rating submitted");
+                    // TODO: Store rating in database
+                    ServerMessage::AchievementRatingSubmitted { appid, apiname }
+                } else {
+                    ServerMessage::AuthError { reason: "Not authenticated".to_string() }
+                }
+            }
+            
+            ClientMessage::SubmitAchievementComment { achievements, comment } => {
+                if let Some(ref steam_id) = authenticated_steam_id {
+                    tracing::info!(steam_id = %steam_id, achievements = ?achievements, comment = %comment, "Achievement comment submitted");
+                    // TODO: Store comment in database
+                    ServerMessage::AchievementCommentSubmitted { count: achievements.len() }
+                } else {
+                    ServerMessage::AuthError { reason: "Not authenticated".to_string() }
+                }
+            }
         };
         
         let response_text = serde_json::to_string(&response).unwrap();

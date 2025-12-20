@@ -1,10 +1,10 @@
 //! WASM App state and UI - matches desktop version layout
 
 use eframe::egui;
-use egui_extras::{Column, TableBuilder};
 use egui_phosphor::regular;
 use overachiever_core::{Game, GameAchievement, UserProfile, RunHistory, AchievementHistory, SyncState, LogEntry};
-use overachiever_core::{StatsPanelPlatform, StatsPanelConfig, render_stats_content};
+use overachiever_core::{StatsPanelPlatform, StatsPanelConfig, render_stats_content, render_log_content, SidebarPanel};
+use overachiever_core::{GamesTablePlatform, SortColumn, SortOrder, TriFilter, sort_games, get_filtered_indices, render_filter_bar, render_games_table};
 use std::collections::{HashMap, HashSet};
 
 use crate::ws_client::WsClient;
@@ -20,56 +20,6 @@ pub enum ConnectionState {
     Connected,
     Authenticated(UserProfile),
     Error(String),
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum SortColumn {
-    Name,
-    LastPlayed,
-    Playtime,
-    AchievementsTotal,
-    AchievementsPercent,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum SortOrder {
-    Ascending,
-    Descending,
-}
-
-impl SortOrder {
-    pub fn toggle(&self) -> Self {
-        match self {
-            SortOrder::Ascending => SortOrder::Descending,
-            SortOrder::Descending => SortOrder::Ascending,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Default)]
-pub enum TriFilter {
-    #[default]
-    All,
-    With,
-    Without,
-}
-
-impl TriFilter {
-    pub fn cycle(&self) -> Self {
-        match self {
-            TriFilter::All => TriFilter::With,
-            TriFilter::With => TriFilter::Without,
-            TriFilter::Without => TriFilter::All,
-        }
-    }
-    
-    pub fn label(&self, with_text: &str, without_text: &str) -> String {
-        match self {
-            TriFilter::All => "All".to_string(),
-            TriFilter::With => with_text.to_string(),
-            TriFilter::Without => without_text.to_string(),
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -118,6 +68,7 @@ pub struct WasmApp {
     show_login: bool,
     include_unplayed_in_avg: bool,
     show_stats_panel: bool,
+    sidebar_panel: SidebarPanel,
     
     // Token from URL or storage
     auth_token: Option<String>,
@@ -163,6 +114,72 @@ impl StatsPanelPlatform for WasmApp {
     }
 }
 
+impl GamesTablePlatform for WasmApp {
+    fn sort_column(&self) -> SortColumn {
+        self.sort_column
+    }
+    
+    fn sort_order(&self) -> SortOrder {
+        self.sort_order
+    }
+    
+    fn set_sort(&mut self, column: SortColumn) {
+        if self.sort_column == column {
+            self.sort_order = self.sort_order.toggle();
+        } else {
+            self.sort_column = column;
+            self.sort_order = SortOrder::Ascending;
+        }
+        sort_games(&mut self.games, self.sort_column, self.sort_order);
+    }
+    
+    fn filter_name(&self) -> &str {
+        &self.filter_name
+    }
+    
+    fn set_filter_name(&mut self, name: String) {
+        self.filter_name = name;
+    }
+    
+    fn filter_achievements(&self) -> TriFilter {
+        self.filter_achievements
+    }
+    
+    fn set_filter_achievements(&mut self, filter: TriFilter) {
+        self.filter_achievements = filter;
+    }
+    
+    fn filter_playtime(&self) -> TriFilter {
+        self.filter_playtime
+    }
+    
+    fn set_filter_playtime(&mut self, filter: TriFilter) {
+        self.filter_playtime = filter;
+    }
+    
+    fn is_expanded(&self, appid: u64) -> bool {
+        self.expanded_rows.contains(&appid)
+    }
+    
+    fn toggle_expanded(&mut self, appid: u64) {
+        if self.expanded_rows.contains(&appid) {
+            self.expanded_rows.remove(&appid);
+        } else {
+            self.expanded_rows.insert(appid);
+        }
+    }
+    
+    fn get_cached_achievements(&self, appid: u64) -> Option<&Vec<GameAchievement>> {
+        self.achievements_cache.get(&appid)
+    }
+    
+    fn request_achievements(&mut self, appid: u64) {
+        if let Some(client) = &self.ws_client {
+            client.fetch_achievements(appid);
+        }
+    }
+}
+
 impl WasmApp {
     pub fn new() -> Self {
         // Try to get token from URL params or localStorage
@@ -201,6 +218,7 @@ impl WasmApp {
             show_login: false,
             include_unplayed_in_avg: false,
             show_stats_panel,
+            sidebar_panel: SidebarPanel::Stats,
             auth_token,
         };
         
@@ -300,7 +318,7 @@ impl WasmApp {
                     self.games_loaded = true;
                     self.app_state = AppState::Idle;
                     self.status = format!("Loaded {} games", self.games.len());
-                    self.sort_games();
+                    sort_games(&mut self.games, self.sort_column, self.sort_order);
                 }
                 overachiever_core::ServerMessage::Achievements { appid, achievements } => {
                     self.achievements_cache.insert(appid, achievements);
@@ -337,7 +355,7 @@ impl WasmApp {
                     self.app_state = AppState::Idle;
                     self.scan_progress = None;
                     self.status = format!("Scan complete! Updated {} games, {} achievements", result.games_updated, result.achievements_updated);
-                    self.sort_games();
+                    sort_games(&mut self.games, self.sort_column, self.sort_order);
                     // Refresh history
                     if let Some(client) = &self.ws_client {
                         client.fetch_history();
@@ -377,98 +395,8 @@ impl WasmApp {
         self.games.iter().filter(|g| g.achievements_total.is_none()).count()
     }
     
-    // ========================================================================
-    // Sorting
-    // ========================================================================
-    
-    fn set_sort(&mut self, column: SortColumn) {
-        if self.sort_column == column {
-            self.sort_order = self.sort_order.toggle();
-        } else {
-            self.sort_column = column;
-            self.sort_order = SortOrder::Ascending;
-        }
-        self.sort_games();
-    }
-    
-    fn sort_games(&mut self) {
-        let order = self.sort_order;
-        match self.sort_column {
-            SortColumn::Name => {
-                self.games.sort_by(|a, b| {
-                    let cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
-                    if order == SortOrder::Descending { cmp.reverse() } else { cmp }
-                });
-            }
-            SortColumn::LastPlayed => {
-                self.games.sort_by(|a, b| {
-                    let cmp = b.rtime_last_played.cmp(&a.rtime_last_played);
-                    if order == SortOrder::Descending { cmp.reverse() } else { cmp }
-                });
-            }
-            SortColumn::Playtime => {
-                self.games.sort_by(|a, b| {
-                    let cmp = b.playtime_forever.cmp(&a.playtime_forever);
-                    if order == SortOrder::Descending { cmp.reverse() } else { cmp }
-                });
-            }
-            SortColumn::AchievementsTotal => {
-                self.games.sort_by(|a, b| {
-                    let cmp = b.achievements_total.cmp(&a.achievements_total);
-                    if order == SortOrder::Descending { cmp.reverse() } else { cmp }
-                });
-            }
-            SortColumn::AchievementsPercent => {
-                self.games.sort_by(|a, b| {
-                    let a_pct = a.completion_percent().unwrap_or(-1.0);
-                    let b_pct = b.completion_percent().unwrap_or(-1.0);
-                    let cmp = b_pct.partial_cmp(&a_pct).unwrap_or(std::cmp::Ordering::Equal);
-                    if order == SortOrder::Descending { cmp.reverse() } else { cmp }
-                });
-            }
-        }
-    }
-    
-    fn sort_indicator(&self, column: SortColumn) -> &'static str {
-        if self.sort_column == column {
-            match self.sort_order {
-                SortOrder::Ascending => regular::CARET_UP,
-                SortOrder::Descending => regular::CARET_DOWN,
-            }
-        } else {
-            ""
-        }
-    }
-    
-    // ========================================================================
-    // Filtering
-    // ========================================================================
-    
-    fn get_filtered_indices(&self) -> Vec<usize> {
-        let filter_name_lower = self.filter_name.to_lowercase();
-        
-        self.games.iter()
-            .enumerate()
-            .filter(|(_, g)| {
-                if !filter_name_lower.is_empty() && !g.name.to_lowercase().contains(&filter_name_lower) {
-                    return false;
-                }
-                let has_achievements = g.achievements_total.map(|t| t > 0).unwrap_or(false);
-                match self.filter_achievements {
-                    TriFilter::All => {}
-                    TriFilter::With => if !has_achievements { return false; }
-                    TriFilter::Without => if has_achievements { return false; }
-                }
-                let has_playtime = g.rtime_last_played.map(|ts| ts > 0).unwrap_or(false);
-                match self.filter_playtime {
-                    TriFilter::All => {}
-                    TriFilter::With => if !has_playtime { return false; }
-                    TriFilter::Without => if has_playtime { return false; }
-                }
-                true
-            })
-            .map(|(idx, _)| idx)
-            .collect()
+    fn do_sort_games(&mut self) {
+        sort_games(&mut self.games, self.sort_column, self.sort_order);
     }
 }
 
@@ -600,14 +528,27 @@ impl WasmApp {
             .fill(darker_fill);
         
         if !self.show_stats_panel {
-            // Collapsed sidebar - only show open button
+            // Collapsed sidebar - show two buttons (Stats and Log)
             egui::SidePanel::right("stats_panel_collapsed")
                 .exact_width(36.0)
                 .resizable(false)
                 .frame(panel_frame)
                 .show(ctx, |ui| {
                     ui.add_space(4.0);
-                    if ui.button(regular::CARET_LEFT.to_string()).on_hover_text("Open Stats Panel").clicked() {
+                    // Stats button
+                    if ui.button(regular::CHART_LINE.to_string())
+                        .on_hover_text("Open Stats Panel")
+                        .clicked() 
+                    {
+                        self.sidebar_panel = SidebarPanel::Stats;
+                        self.show_stats_panel = true;
+                    }
+                    // Log button
+                    if ui.button(regular::SCROLL.to_string())
+                        .on_hover_text("Open Log Panel")
+                        .clicked()
+                    {
+                        self.sidebar_panel = SidebarPanel::Log;
                         self.show_stats_panel = true;
                     }
                 });
@@ -625,21 +566,47 @@ impl WasmApp {
         let panel = if is_mobile {
             panel.exact_width(available_width)
         } else {
-            panel.default_width(320.0)
+            // Use min_width like desktop - panel content will fill this width
+            // but won't force the panel to grow larger
+            panel.min_width(320.0)
         };
         
         panel.show(ctx, |ui| {
-                // Close button at top left (chevron right to close/collapse)
+                // Top navigation bar: close button + panel tabs
                 ui.horizontal(|ui| {
-                    if ui.small_button(regular::CARET_RIGHT.to_string()).on_hover_text("Close Stats Panel").clicked() {
+                    // Close button (chevron right to collapse)
+                    if ui.small_button(regular::CARET_RIGHT.to_string())
+                        .on_hover_text("Close Panel")
+                        .clicked() 
+                    {
                         self.show_stats_panel = false;
+                    }
+                    
+                    ui.separator();
+                    
+                    // Panel navigation tabs
+                    let stats_selected = self.sidebar_panel == SidebarPanel::Stats;
+                    let log_selected = self.sidebar_panel == SidebarPanel::Log;
+                    
+                    if ui.selectable_label(stats_selected, format!("{} Stats", regular::CHART_LINE)).clicked() {
+                        self.sidebar_panel = SidebarPanel::Stats;
+                    }
+                    if ui.selectable_label(log_selected, format!("{} Log", regular::SCROLL)).clicked() {
+                        self.sidebar_panel = SidebarPanel::Log;
                     }
                 });
                 ui.separator();
                 
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    let config = StatsPanelConfig::wasm();
-                    render_stats_content(ui, self, &config);
+                    match self.sidebar_panel {
+                        SidebarPanel::Stats => {
+                            let config = StatsPanelConfig::wasm();
+                            render_stats_content(ui, self, &config);
+                        }
+                        SidebarPanel::Log => {
+                            render_log_content(ui, self);
+                        }
+                    }
                 });
             });
     }
@@ -678,17 +645,24 @@ impl WasmApp {
             ui.heading(format!("Games Library ({} games)", self.games.len()));
             ui.separator();
             
-            self.render_filter_bar(ui);
+            render_filter_bar(ui, self);
             ui.add_space(4.0);
             
-            let filtered_indices = self.get_filtered_indices();
+            let filtered_indices = get_filtered_indices(self);
             let filtered_count = filtered_indices.len();
             
             if filtered_count != self.games.len() {
                 ui.label(format!("Showing {} of {} games", filtered_count, self.games.len()));
             }
             
-            self.render_games_table(ui, filtered_indices);
+            let needs_fetch = render_games_table(ui, self, filtered_indices);
+            
+            // Fetch achievements for any rows that need them
+            if let Some(client) = &self.ws_client {
+                for appid in needs_fetch {
+                    client.fetch_achievements(appid);
+                }
+            }
         });
     }
     
@@ -803,321 +777,6 @@ impl WasmApp {
         }
     }
     
-    fn render_filter_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Filter:");
-            ui.add(egui::TextEdit::singleline(&mut self.filter_name)
-                .hint_text("Search by name...")
-                .desired_width(150.0));
-            
-            ui.add_space(10.0);
-            
-            let ach_label = format!("Achievements: {}", self.filter_achievements.label("With", "Without"));
-            if ui.button(&ach_label).clicked() {
-                self.filter_achievements = self.filter_achievements.cycle();
-            }
-            
-            let play_label = format!("Played: {}", self.filter_playtime.label("Yes", "No"));
-            if ui.button(&play_label).clicked() {
-                self.filter_playtime = self.filter_playtime.cycle();
-            }
-            
-            let has_filters = !self.filter_name.is_empty() 
-                || self.filter_achievements != TriFilter::All 
-                || self.filter_playtime != TriFilter::All;
-            
-            if has_filters {
-                if ui.button("Clear").clicked() {
-                    self.filter_name.clear();
-                    self.filter_achievements = TriFilter::All;
-                    self.filter_playtime = TriFilter::All;
-                }
-            }
-        });
-    }
-    
-    fn render_games_table(&mut self, ui: &mut egui::Ui, filtered_indices: Vec<usize>) {
-        let text_height = egui::TextStyle::Body
-            .resolve(ui.style())
-            .size
-            .max(ui.spacing().interact_size.y);
-        
-        let available_height = ui.available_height();
-        
-        // Calculate row heights - expanded rows are taller
-        let row_heights: Vec<f32> = filtered_indices.iter().map(|&idx| {
-            let appid = self.games[idx].appid;
-            if self.expanded_rows.contains(&appid) {
-                text_height + 330.0 // Extra height for achievement list
-            } else {
-                text_height
-            }
-        }).collect();
-        
-        // Track which rows need achievement fetch
-        let mut needs_fetch: Vec<u64> = Vec::new();
-        
-        TableBuilder::new(ui)
-            .striped(true)
-            .resizable(false)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(Column::remainder().at_least(200.0).clip(true).resizable(true)) // Name - resizable
-            .column(Column::exact(90.0)) // Last Played - fixed
-            .column(Column::exact(80.0)) // Playtime - fixed
-            .column(Column::exact(100.0)) // Achievements - fixed
-            .column(Column::exact(60.0)) // Percent - fixed
-            .min_scrolled_height(0.0)
-            .max_scroll_height(available_height)
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    let indicator = self.sort_indicator(SortColumn::Name);
-                    let label = if indicator.is_empty() { "Name".to_string() } else { format!("Name {}", indicator) };
-                    if ui.selectable_label(self.sort_column == SortColumn::Name, label).clicked() {
-                        self.set_sort(SortColumn::Name);
-                    }
-                });
-                header.col(|ui| {
-                    let indicator = self.sort_indicator(SortColumn::LastPlayed);
-                    let label = if indicator.is_empty() { "Last Played".to_string() } else { format!("Last Played {}", indicator) };
-                    if ui.selectable_label(self.sort_column == SortColumn::LastPlayed, label).clicked() {
-                        self.set_sort(SortColumn::LastPlayed);
-                    }
-                });
-                header.col(|ui| {
-                    let indicator = self.sort_indicator(SortColumn::Playtime);
-                    let label = if indicator.is_empty() { "Playtime".to_string() } else { format!("Playtime {}", indicator) };
-                    if ui.selectable_label(self.sort_column == SortColumn::Playtime, label).clicked() {
-                        self.set_sort(SortColumn::Playtime);
-                    }
-                });
-                header.col(|ui| {
-                    let indicator = self.sort_indicator(SortColumn::AchievementsTotal);
-                    let label = if indicator.is_empty() { "Achievements".to_string() } else { format!("Achievements {}", indicator) };
-                    if ui.selectable_label(self.sort_column == SortColumn::AchievementsTotal, label).clicked() {
-                        self.set_sort(SortColumn::AchievementsTotal);
-                    }
-                });
-                header.col(|ui| {
-                    let indicator = self.sort_indicator(SortColumn::AchievementsPercent);
-                    let label = if indicator.is_empty() { "%".to_string() } else { format!("% {}", indicator) };
-                    if ui.selectable_label(self.sort_column == SortColumn::AchievementsPercent, label).clicked() {
-                        self.set_sort(SortColumn::AchievementsPercent);
-                    }
-                });
-            })
-            .body(|body| {
-                body.heterogeneous_rows(row_heights.into_iter(), |mut row| {
-                    let row_idx = row.index();
-                    let game_idx = filtered_indices[row_idx];
-                    let game = &self.games[game_idx];
-                    let appid = game.appid;
-                    let is_expanded = self.expanded_rows.contains(&appid);
-                    let has_achievements = game.achievements_total.map(|t| t > 0).unwrap_or(false);
-                    
-                    // Name with expand/collapse toggle
-                    row.col(|ui| {
-                        self.render_name_cell(ui, game_idx, is_expanded, has_achievements, &mut needs_fetch);
-                    });
-                    
-                    // Only show other columns if not expanded
-                    row.col(|ui| {
-                        if !is_expanded {
-                            if let Some(ts) = self.games[game_idx].rtime_last_played {
-                                if ts > 0 {
-                                    ui.label(format_timestamp(ts));
-                                } else {
-                                    ui.label("—");
-                                }
-                            } else {
-                                ui.label("—");
-                            }
-                        }
-                    });
-                    
-                    row.col(|ui| {
-                        if !is_expanded {
-                            let hours = self.games[game_idx].playtime_forever as f64 / 60.0;
-                            ui.label(format!("{:.1}h", hours));
-                        }
-                    });
-                    
-                    row.col(|ui| {
-                        if !is_expanded {
-                            ui.label(self.games[game_idx].achievements_display());
-                        }
-                    });
-                    
-                    row.col(|ui| {
-                        if !is_expanded {
-                            if let Some(pct) = self.games[game_idx].completion_percent() {
-                                let color = if pct >= 100.0 {
-                                    egui::Color32::from_rgb(100, 255, 100)
-                                } else if pct >= 50.0 {
-                                    egui::Color32::from_rgb(255, 215, 0)
-                                } else {
-                                    egui::Color32::GRAY
-                                };
-                                ui.label(egui::RichText::new(format!("{:.0}%", pct)).color(color));
-                            } else {
-                                ui.label("—");
-                            }
-                        }
-                    });
-                });
-            });
-        
-        // Fetch achievements for any rows that need them
-        if let Some(client) = &self.ws_client {
-            for appid in needs_fetch {
-                client.fetch_achievements(appid);
-            }
-        }
-    }
-    
-    fn render_name_cell(&mut self, ui: &mut egui::Ui, game_idx: usize, is_expanded: bool, has_achievements: bool, needs_fetch: &mut Vec<u64>) {
-        let game = &self.games[game_idx];
-        let appid = game.appid;
-        let game_name = game.name.clone();
-        let img_icon_url = game.img_icon_url.clone();
-        
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                // Expand/collapse button for games with achievements
-                if has_achievements {
-                    let icon = if is_expanded { 
-                        regular::CARET_DOWN 
-                    } else { 
-                        regular::CARET_RIGHT 
-                    };
-                    if ui.small_button(icon.to_string()).clicked() {
-                        if is_expanded {
-                            self.expanded_rows.remove(&appid);
-                        } else {
-                            self.expanded_rows.insert(appid);
-                            // Load achievements if not cached
-                            if !self.achievements_cache.contains_key(&appid) {
-                                needs_fetch.push(appid);
-                            }
-                        }
-                    }
-                } else {
-                    ui.add_space(20.0);
-                }
-                
-                // Show game icon when expanded
-                if is_expanded {
-                    if let Some(icon_hash) = &img_icon_url {
-                        if !icon_hash.is_empty() {
-                            let icon_url = game_icon_url(appid, icon_hash);
-                            ui.add(
-                                egui::Image::new(icon_url)
-                                    .fit_to_exact_size(egui::vec2(32.0, 32.0))
-                                    .corner_radius(4.0)
-                            );
-                        }
-                    }
-                    ui.label(egui::RichText::new(&game_name).strong());
-                } else {
-                    ui.label(&game_name);
-                }
-            });
-            
-            // Show achievements list if expanded
-            if is_expanded {
-                self.render_achievements_list(ui, appid);
-            }
-        });
-    }
-    
-    fn render_achievements_list(&self, ui: &mut egui::Ui, appid: u64) {
-        if let Some(achievements) = self.achievements_cache.get(&appid) {
-            ui.add_space(4.0);
-            ui.separator();
-            
-            // Sort achievements: unlocked first (by unlock time desc), then locked
-            let mut sorted_achs: Vec<_> = achievements.iter().collect();
-            sorted_achs.sort_by(|a, b| {
-                match (a.achieved, b.achieved) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    (true, true) => b.unlocktime.cmp(&a.unlocktime),
-                    (false, false) => a.name.cmp(&b.name),
-                }
-            });
-            
-            egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                for (i, ach) in sorted_achs.iter().enumerate() {
-                    let icon_url = if ach.achieved {
-                        proxy_steam_image_url(&ach.icon)
-                    } else {
-                        proxy_steam_image_url(&ach.icon_gray)
-                    };
-                    
-                    // Alternate row background
-                    let row_rect = ui.available_rect_before_wrap();
-                    let row_rect = egui::Rect::from_min_size(
-                        row_rect.min,
-                        egui::vec2(row_rect.width(), 52.0)
-                    );
-                    if i % 2 == 1 {
-                        ui.painter().rect_filled(
-                            row_rect,
-                            0.0,
-                            ui.visuals().faint_bg_color
-                        );
-                    }
-                    
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Image::new(icon_url.as_str())
-                                .fit_to_exact_size(egui::vec2(64.0, 64.0))
-                                .corner_radius(4.0)
-                        );
-                        
-                        let name_text = if ach.achieved {
-                            egui::RichText::new(&ach.name).color(egui::Color32::WHITE)
-                        } else {
-                            egui::RichText::new(&ach.name).color(egui::Color32::DARK_GRAY)
-                        };
-                        
-                        let description_text = ach.description.as_deref().unwrap_or("");
-                        let desc_color = if ach.achieved {
-                            egui::Color32::GRAY
-                        } else {
-                            egui::Color32::from_rgb(80, 80, 80)
-                        };
-                        
-                        ui.vertical(|ui| {
-                            ui.add_space(4.0);
-                            // Top row: name and date
-                            ui.horizontal(|ui| {
-                                ui.label(name_text);
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if let Some(unlock_dt) = &ach.unlocktime {
-                                        ui.label(
-                                            egui::RichText::new(unlock_dt.format("%Y-%m-%d").to_string())
-                                                .color(egui::Color32::from_rgb(100, 200, 100))
-                                        );
-                                    }
-                                });
-                            });
-                            // Description below
-                            if !description_text.is_empty() {
-                                ui.label(egui::RichText::new(description_text).color(desc_color));
-                            }
-                        });
-                    });
-                }
-            });
-        } else {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label("Loading achievements...");
-            });
-        }
-    }
-    
 }
 
 // ============================================================================
@@ -1184,15 +843,6 @@ fn get_auth_url() -> String {
             Some(format!("{}/auth/steam", origin))
         })
         .unwrap_or_else(|| "/auth/steam".to_string())
-}
-
-fn format_timestamp(ts: u32) -> String {
-    use chrono::{TimeZone, Utc};
-    if let Some(dt) = Utc.timestamp_opt(ts as i64, 0).single() {
-        dt.format("%Y-%m-%d").to_string()
-    } else {
-        "—".to_string()
-    }
 }
 
 /// Convert Steam CDN URLs to proxied URLs to avoid CORS issues

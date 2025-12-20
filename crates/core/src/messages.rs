@@ -40,6 +40,20 @@ pub enum ClientMessage {
         tip: String 
     },
     
+    /// Submit an achievement rating (1-5 stars)
+    SubmitAchievementRating {
+        appid: u64,
+        apiname: String,
+        rating: u8,
+    },
+    
+    /// Submit a comment for multiple achievements
+    SubmitAchievementComment {
+        /// List of (appid, apiname) tuples
+        achievements: Vec<(u64, String)>,
+        comment: String,
+    },
+    
     /// Get community ratings for a game
     GetCommunityRatings { appid: u64 },
     
@@ -106,6 +120,12 @@ pub enum ServerMessage {
     
     /// Tip submitted successfully
     TipSubmitted { appid: u64, apiname: String },
+    
+    /// Achievement rating submitted successfully
+    AchievementRatingSubmitted { appid: u64, apiname: String },
+    
+    /// Achievement comment submitted successfully
+    AchievementCommentSubmitted { count: usize },
     
     /// History data
     History {

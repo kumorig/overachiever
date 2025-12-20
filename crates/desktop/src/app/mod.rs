@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::db::{get_all_games, get_run_history, get_achievement_history, get_log_entries, open_connection, get_last_update, finalize_migration, ensure_user};
 use crate::icon_cache::IconCache;
 use crate::ui::{AppState, SortColumn, SortOrder, TriFilter, ProgressReceiver};
-use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry};
+use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel};
 
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
@@ -44,6 +44,9 @@ pub struct SteamOverachieverApp {
     pub(crate) filter_playtime: TriFilter,
     // Settings window
     pub(crate) show_settings: bool,
+    // Sidebar panel state
+    pub(crate) show_stats_panel: bool,
+    pub(crate) sidebar_panel: SidebarPanel,
 }
 
 impl SteamOverachieverApp {
@@ -87,6 +90,8 @@ impl SteamOverachieverApp {
             filter_achievements: TriFilter::All,
             filter_playtime: TriFilter::All,
             show_settings,
+            show_stats_panel: true,
+            sidebar_panel: SidebarPanel::Stats,
         };
         
         // Apply consistent sorting after loading from database
@@ -115,6 +120,6 @@ impl eframe::App for SteamOverachieverApp {
         // Render panels
         self.render_top_panel(ctx);
         self.render_history_panel(ctx);
-        self.render_games_table(ctx);
+        self.render_games_table_panel(ctx);
     }
 }
