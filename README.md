@@ -2,6 +2,9 @@
 
 An application for tracking your Steam game library and achievement progress over time. 
 
+Demo: https://overachiever.space
+
+
 This project is in no way affiliated with or endorsed by Valve Corporation.
 
 
@@ -32,13 +35,13 @@ About half of the code has been "vibe-coded", feel free to help clean-up any mes
 
 ## Roadmap
 Feel free to open an issue with suggestions.
-[x] live WASM version: https://overachiever.space (in progress)
-[ ] WASM version has lots of duplicated code with desktop version (AI, am I right? :D) Refactor plz.
-[ ] Improve the graphs, but lets run the app a few weeks so we have some data to work with first.
-[ ] backend for comments ratings on achievements. 
-[ ] help users find easy achievements (need more data first?).
-[ ] Optimization: Pack icon files into single binary blob/texture atlas to reduce file count. Option to not cache icons to disk for desktop.
-[ ] Feature: export of achievement data to CSV/JSON.
+- [x] live WASM version: https://overachiever.space (in progress)
+- [ ] WASM version has lots of duplicated code with desktop version (AI, am I right? :D) Refactor plz.
+- [ ] Improve the graphs, but lets run the app a few weeks so we have some data to work with first.
+- [ ] backend for comments ratings on achievements. 
+- [ ] help users find easy achievements (need more data first?).
+- [ ] Optimization: Pack icon files into single binary blob/texture atlas to reduce file count. Option to not cache icons to disk for desktop.
+- [ ] Feature: export of achievement data to CSV/JSON.
 
 
 ## License

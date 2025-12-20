@@ -3,3 +3,4 @@
 \.env
 /steam_overachiever.db
 /config.toml
+/web/dist
