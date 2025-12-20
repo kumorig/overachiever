@@ -1,7 +1,7 @@
 //! Database operations for the backend using tokio-postgres
 
 use deadpool_postgres::{Pool, PoolError};
-use overachiever_core::{Game, GameAchievement, GameRating, AchievementTip};
+use overachiever_core::{Game, GameAchievement, GameRating, AchievementTip, LogEntry};
 use chrono::{DateTime, Utc};
 
 #[derive(Debug)]
@@ -189,31 +189,6 @@ pub async fn get_achievement_tips(
     }).collect();
     
     Ok(tips)
-}
-
-pub async fn insert_tip(
-    pool: &Pool,
-    tip: &AchievementTip,
-) -> Result<(), DbError> {
-    let client = pool.get().await?;
-    let steam_id_int: i64 = tip.steam_id.parse().unwrap_or(0);
-    
-    client.execute(
-        r#"
-        INSERT INTO achievement_tips (steam_id, appid, apiname, difficulty, tip, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        "#,
-        &[
-            &steam_id_int,
-            &(tip.appid as i64),
-            &tip.apiname,
-            &(tip.difficulty as i16),
-            &tip.tip,
-            &Utc::now(),
-        ]
-    ).await?;
-    
-    Ok(())
 }
 
 pub async fn get_or_create_user(
@@ -471,4 +446,38 @@ pub async fn insert_achievement_history(
     ).await?;
     
     Ok(())
+}
+
+/// Get log entries (recently unlocked achievements) for a user
+pub async fn get_log_entries(pool: &Pool, steam_id: &str, limit: i32) -> Result<Vec<LogEntry>, DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
+    
+    // Get recently unlocked achievements with game and schema info
+    let rows = client.query(
+        r#"
+        SELECT ua.appid, g.name as game_name, s.display_name as achievement_name, 
+               ua.unlocktime, s.icon as achievement_icon, g.img_icon_url as game_icon_url
+        FROM user_achievements ua
+        JOIN user_games g ON ua.steam_id = g.steam_id AND ua.appid = g.appid
+        LEFT JOIN achievement_schemas s ON ua.appid = s.appid AND ua.apiname = s.apiname
+        WHERE ua.steam_id = $1 AND ua.achieved = true AND ua.unlocktime IS NOT NULL
+        ORDER BY ua.unlocktime DESC
+        LIMIT $2
+        "#,
+        &[&steam_id_int, &(limit as i64)]
+    ).await?;
+    
+    let entries = rows.into_iter().map(|row| {
+        LogEntry::Achievement {
+            appid: row.get::<_, i64>("appid") as u64,
+            game_name: row.get("game_name"),
+            achievement_name: row.get::<_, Option<String>>("achievement_name").unwrap_or_else(|| "Unknown".to_string()),
+            timestamp: row.get("unlocktime"),
+            achievement_icon: row.get::<_, Option<String>>("achievement_icon").unwrap_or_default(),
+            game_icon_url: row.get("game_icon_url"),
+        }
+    }).collect();
+    
+    Ok(entries)
 }

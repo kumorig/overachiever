@@ -396,10 +396,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 if let Some(ref steam_id) = authenticated_steam_id {
                     let run_history = crate::db::get_run_history(&state.db_pool, steam_id).await.unwrap_or_default();
                     let achievement_history = crate::db::get_achievement_history(&state.db_pool, steam_id).await.unwrap_or_default();
+                    let log_entries = crate::db::get_log_entries(&state.db_pool, steam_id, 50).await.unwrap_or_default();
                     ServerMessage::History {
                         run_history,
                         achievement_history,
-                        log_entries: vec![], // TODO: Implement log entries
+                        log_entries,
                     }
                 } else {
                     ServerMessage::AuthError { reason: "Not authenticated".to_string() }

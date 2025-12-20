@@ -4,7 +4,7 @@ use eframe::egui;
 use egui_extras::{Column, TableBuilder};
 use egui_phosphor::regular;
 use egui_plot::{Line, Plot, PlotPoints};
-use overachiever_core::{Game, GameAchievement, UserProfile, RunHistory, AchievementHistory, SyncState};
+use overachiever_core::{Game, GameAchievement, UserProfile, RunHistory, AchievementHistory, SyncState, LogEntry};
 use std::collections::{HashMap, HashSet};
 
 use crate::ws_client::WsClient;
@@ -101,6 +101,7 @@ pub struct WasmApp {
     games_loaded: bool,
     run_history: Vec<RunHistory>,
     achievement_history: Vec<AchievementHistory>,
+    log_entries: Vec<LogEntry>,
     
     // UI state
     status: String,
@@ -145,6 +146,7 @@ impl WasmApp {
             games_loaded: false,
             run_history: Vec::new(),
             achievement_history: Vec::new(),
+            log_entries: Vec::new(),
             status: "Connecting...".to_string(),
             app_state: AppState::Idle,
             scan_progress: None,
@@ -301,9 +303,10 @@ impl WasmApp {
                         client.fetch_history();
                     }
                 }
-                overachiever_core::ServerMessage::History { run_history, achievement_history, .. } => {
+                overachiever_core::ServerMessage::History { run_history, achievement_history, log_entries } => {
                     self.run_history = run_history;
                     self.achievement_history = achievement_history;
+                    self.log_entries = log_entries;
                 }
                 _ => {}
             }
@@ -613,16 +616,21 @@ impl WasmApp {
             return;
         }
         
-        // Get available width to cap panel size
+        // Get available width - for mobile (< 600px), use full width
         let available_width = ctx.input(|i| i.viewport().inner_rect.map(|r| r.width()).unwrap_or(800.0));
-        let max_panel_width = (available_width * 0.4).min(350.0).max(280.0);
+        let is_mobile = available_width < 600.0;
         
-        egui::SidePanel::right("stats_panel")
-            .min_width(280.0)
-            .max_width(max_panel_width)
-            .resizable(true)
-            .frame(panel_frame)
-            .show(ctx, |ui| {
+        let panel = egui::SidePanel::right("stats_panel")
+            .resizable(!is_mobile)
+            .frame(panel_frame);
+        
+        let panel = if is_mobile {
+            panel.exact_width(available_width)
+        } else {
+            panel.default_width(320.0)
+        };
+        
+        panel.show(ctx, |ui| {
                 // Close button at top left (chevron right to close/collapse)
                 ui.horizontal(|ui| {
                     if ui.small_button(regular::CARET_RIGHT.to_string()).on_hover_text("Close Stats Panel").clicked() {
@@ -637,11 +645,16 @@ impl WasmApp {
                     self.render_achievement_progress(ui);
                     ui.add_space(16.0);
                     self.render_games_breakdown(ui);
+                    ui.add_space(16.0);
+                    self.render_log(ui);
                 });
             });
     }
     
     fn render_games_over_time(&self, ui: &mut egui::Ui) {
+        ui.heading("Games Over Time");
+        ui.separator();
+        
         let points: PlotPoints = if self.run_history.is_empty() {
             PlotPoints::default()
         } else {
@@ -669,6 +682,9 @@ impl WasmApp {
     }
     
     fn render_achievement_progress(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Achievement Progress");
+        ui.separator();
+        
         let (avg_completion_points, overall_pct_points, y_min, y_max) = if self.achievement_history.is_empty() {
             (PlotPoints::default(), PlotPoints::default(), 0.0, 100.0)
         } else {
@@ -738,18 +754,9 @@ impl WasmApp {
                 plot_ui.line(avg_line);
                 plot_ui.line(overall_line);
             });
-        
-        // Show current stats
-        ui.add_space(8.0);
-        self.render_current_stats(ui);
     }
     
     fn render_current_stats(&mut self, ui: &mut egui::Ui) {
-        if self.games.is_empty() {
-            ui.label("Sync your games to see stats.");
-            return;
-        }
-        
         let (unlocked, total, avg_completion, played_count, unplayed_count) = self.calculate_stats();
         let yellow = egui::Color32::from_rgb(255, 215, 0);
         
@@ -760,10 +767,11 @@ impl WasmApp {
         };
         
         ui.horizontal(|ui| {
+            ui.label("Total achievements:");
             ui.label(egui::RichText::new(format!("{}", unlocked)).color(yellow).strong());
             ui.label("/");
             ui.label(egui::RichText::new(format!("{}", total)).color(yellow).strong());
-            ui.label("achievements (");
+            ui.label("(");
             ui.label(egui::RichText::new(format!("{:.1}%", overall_pct)).color(yellow).strong());
             ui.label(")");
         });
@@ -790,13 +798,18 @@ impl WasmApp {
         });
     }
     
-    fn render_games_breakdown(&self, ui: &mut egui::Ui) {
-        ui.heading(format!("{} Games Breakdown", regular::GAME_CONTROLLER));
+    fn render_games_breakdown(&mut self, ui: &mut egui::Ui) {
+        ui.heading(format!("{} Breakdown", regular::GAME_CONTROLLER));
         ui.separator();
         
         if self.games.is_empty() {
+            ui.label("Sync your games to see stats.");
             return;
         }
+        
+        // Show current stats (moved from below charts)
+        self.render_current_stats(ui);
+        ui.add_space(8.0);
         
         let yellow = egui::Color32::from_rgb(255, 215, 0);
         let (_, _, _, played_count, unplayed_count) = self.calculate_stats();
@@ -829,6 +842,92 @@ impl WasmApp {
                 ui.label(egui::RichText::new(format!("{}", needs_scan)).color(egui::Color32::LIGHT_GRAY));
             });
         }
+    }
+    
+    fn render_log(&self, ui: &mut egui::Ui) {
+        // Colors for different elements
+        let date_color = egui::Color32::from_rgb(130, 130, 130);  // Gray for dates
+        let game_color = egui::Color32::from_rgb(100, 180, 255);  // Blue for game names
+        let achievement_color = egui::Color32::from_rgb(255, 215, 0);  // Gold for achievement names
+        let alt_bg = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 8);  // Subtle alternating bg
+        
+        ui.collapsing(format!("{} Log", regular::SCROLL), |ui| {
+            if self.log_entries.is_empty() {
+                ui.label("No activity yet.");
+            } else {
+                for (i, entry) in self.log_entries.iter().enumerate() {
+                    // Alternating background
+                    let row_rect = ui.available_rect_before_wrap();
+                    let row_rect = egui::Rect::from_min_size(
+                        row_rect.min,
+                        egui::vec2(row_rect.width(), 24.0)
+                    );
+                    if i % 2 == 1 {
+                        ui.painter().rect_filled(row_rect, 2.0, alt_bg);
+                    }
+                    
+                    match entry {
+                        LogEntry::Achievement { appid, game_name, achievement_name, timestamp, achievement_icon, game_icon_url } => {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                
+                                // Game icon (left)
+                                if let Some(icon_hash) = game_icon_url {
+                                    if !icon_hash.is_empty() {
+                                        let icon_url = game_icon_url_from_hash(*appid, icon_hash);
+                                        ui.add(
+                                            egui::Image::new(icon_url)
+                                                .fit_to_exact_size(egui::vec2(18.0, 18.0))
+                                                .corner_radius(2.0)
+                                        );
+                                    }
+                                }
+                                
+                                // Achievement icon (right of game icon)
+                                if !achievement_icon.is_empty() {
+                                    let proxied_icon = proxy_steam_image_url(achievement_icon);
+                                    ui.add(
+                                        egui::Image::new(proxied_icon)
+                                            .fit_to_exact_size(egui::vec2(18.0, 18.0))
+                                            .corner_radius(2.0)
+                                    );
+                                }
+                                
+                                ui.label(egui::RichText::new(timestamp.format("%Y-%m-%d").to_string()).color(date_color).small());
+                                ui.label(egui::RichText::new(achievement_name).color(achievement_color).strong());
+                                ui.label(egui::RichText::new("in").small());
+                                ui.label(egui::RichText::new(format!("{}!", game_name)).color(game_color));
+                            });
+                        }
+                        LogEntry::FirstPlay { appid, game_name, timestamp, game_icon_url } => {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                
+                                // Game icon
+                                if let Some(icon_hash) = game_icon_url {
+                                    if !icon_hash.is_empty() {
+                                        let icon_url = game_icon_url_from_hash(*appid, icon_hash);
+                                        ui.add(
+                                            egui::Image::new(icon_url)
+                                                .fit_to_exact_size(egui::vec2(18.0, 18.0))
+                                                .corner_radius(2.0)
+                                        );
+                                    } else {
+                                        ui.add_space(22.0);
+                                    }
+                                } else {
+                                    ui.add_space(22.0);
+                                }
+                                
+                                ui.label(egui::RichText::new(timestamp.format("%Y-%m-%d").to_string()).color(date_color).small());
+                                ui.label(egui::RichText::new(game_name).color(game_color));
+                                ui.label(egui::RichText::new("played for the first time!").small());
+                            });
+                        }
+                    }
+                }
+            }
+        });
     }
     
     // ========================================================================
@@ -943,39 +1042,39 @@ impl WasmApp {
                         ui.separator();
                         ui.add_space(16.0);
                         
-                        // Instructions heading
-                        ui.heading("How to set your Steam profile to public:");
-                        ui.add_space(16.0);
-                        
-                        // Step images
-                        let step_width = (ui.available_width() - 40.0).min(600.0);
-                        
-                        ui.add(
-                            egui::Image::new(egui::include_image!("../../../assets/step1.png"))
-                                .fit_to_exact_size(egui::vec2(step_width, step_width * 0.25))
-                                .corner_radius(4.0)
-                        );
-                        ui.add_space(16.0);
-                        
-                        ui.add(
-                            egui::Image::new(egui::include_image!("../../../assets/step2.png"))
-                                .fit_to_exact_size(egui::vec2(step_width, step_width * 0.25))
-                                .corner_radius(4.0)
-                        );
-                        ui.add_space(16.0);
-                        
-                        ui.add(
-                            egui::Image::new(egui::include_image!("../../../assets/step3.png"))
-                                .fit_to_exact_size(egui::vec2(step_width, step_width * 0.5))
-                                .corner_radius(4.0)
-                        );
-                        ui.add_space(16.0);
-                        
-                        ui.add(
-                            egui::Image::new(egui::include_image!("../../../assets/step4.png"))
-                                .fit_to_exact_size(egui::vec2(step_width, step_width * 0.5))
-                                .corner_radius(4.0)
-                        );
+                        // Instructions in collapsible section
+                        egui::CollapsingHeader::new("How to set your Steam profile to public")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                ui.add_space(16.0);
+                                
+                                ui.add(
+                                    egui::Image::new(egui::include_image!("../../../assets/step1.png"))
+                                        .fit_to_exact_size(egui::vec2(348.0,99.0))
+                                        .corner_radius(4.0)
+                                );
+                                ui.add_space(16.0);
+                                
+                                ui.add(
+                                    egui::Image::new(egui::include_image!("../../../assets/step2.png"))
+                                        .fit_to_exact_size(egui::vec2(348.0, 200.0))
+                                        .corner_radius(4.0)
+                                );
+                                ui.add_space(16.0);
+                                
+                                ui.add(
+                                    egui::Image::new(egui::include_image!("../../../assets/step3.png"))
+                                        .fit_to_exact_size(egui::vec2(300.0, 600.0))
+                                        .corner_radius(4.0)
+                                );
+                                ui.add_space(16.0);
+                                
+                                ui.add(
+                                    egui::Image::new(egui::include_image!("../../../assets/step4.png"))
+                                        .fit_to_exact_size(egui::vec2(500.0, 300.0))
+                                        .corner_radius(4.0)
+                                );
+                            });
                         
                         ui.add_space(20.0);
                     });
@@ -1424,4 +1523,9 @@ fn game_icon_url(appid: u64, icon_hash: &str) -> String {
         .unwrap_or_default();
     // Use steam-media proxy which routes to steamcdn-a.akamaihd.net
     format!("{}/steam-media/steamcommunity/public/images/apps/{}/{}.jpg", origin, appid, icon_hash)
+}
+
+/// Build a game icon URL from appid and hash (alias for use in render_log)
+fn game_icon_url_from_hash(appid: u64, icon_hash: &str) -> String {
+    game_icon_url(appid, icon_hash)
 }

@@ -126,10 +126,11 @@ impl SteamOverachieverApp {
             };
             
             ui.horizontal(|ui| {
+                ui.label("Total achievements:");
                 ui.label(egui::RichText::new(format!("{}", latest.unlocked_achievements)).color(yellow).strong());
                 ui.label("/");
                 ui.label(egui::RichText::new(format!("{}", latest.total_achievements)).color(yellow).strong());
-                ui.label("achievements (");
+                ui.label("(");
                 ui.label(egui::RichText::new(format!("{:.1}%", overall_pct)).color(yellow).strong());
                 ui.label(")");
             });
@@ -182,6 +183,35 @@ impl SteamOverachieverApp {
                 ui.label(egui::RichText::new(format!("{:.1}%", unplayed_pct)).color(yellow).strong());
                 ui.label(")");
             });
+            
+            // Additional stats (matching WASM breakdown)
+            ui.add_space(8.0);
+            
+            ui.horizontal(|ui| {
+                ui.label("Total games:");
+                ui.label(egui::RichText::new(format!("{}", self.games.len())).color(yellow).strong());
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("Games with achievements:");
+                ui.label(egui::RichText::new(format!("{}", total_games_with_ach)).color(yellow).strong());
+            });
+            
+            let completed = self.games.iter()
+                .filter(|g| g.completion_percent().map(|p| p >= 100.0).unwrap_or(false))
+                .count();
+            ui.horizontal(|ui| {
+                ui.label(format!("{} 100% completed:", regular::MEDAL));
+                ui.label(egui::RichText::new(format!("{}", completed)).color(yellow).strong());
+            });
+            
+            let needs_scan = self.games.iter().filter(|g| g.achievements_total.is_none()).count();
+            if needs_scan > 0 {
+                ui.horizontal(|ui| {
+                    ui.label("Needs scanning:");
+                    ui.label(egui::RichText::new(format!("{}", needs_scan)).color(egui::Color32::LIGHT_GRAY));
+                });
+            }
         }
     }
     
