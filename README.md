@@ -1,7 +1,7 @@
 # Overachiever - Achievement Progress Tracker for Steam Games
 
 An application for tracking your Steam game library and achievement progress over time.  
-Demo: https://overachiever.space but mainly available as a desktop app.
+Demo: https://overachiever.space but mainly available as a desktop app. Releases [here](https://github.com/kumorig/steam-overachiever-v3/releases).
 
 
 (This project is not affiliated with steam or endorsed by Valve Corporation in any way or form.)
