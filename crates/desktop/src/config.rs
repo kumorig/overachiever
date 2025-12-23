@@ -28,6 +28,10 @@ pub struct Config {
     /// GDPR consent status (for hybrid/remote modes)
     #[serde(default)]
     pub gdpr_consent: GdprConsent,
+    
+    /// Cloud sync JWT token (obtained via Steam OpenID login)
+    #[serde(default)]
+    pub cloud_token: Option<String>,
 }
 
 impl Default for Config {
@@ -38,6 +42,7 @@ impl Default for Config {
             steam_id: String::new(),
             server_url: String::new(),
             gdpr_consent: GdprConsent::Unset,
+            cloud_token: None,
         }
     }
 }

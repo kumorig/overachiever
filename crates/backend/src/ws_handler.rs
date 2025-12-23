@@ -172,7 +172,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         }
                         
                         // Record run history
-                        let _ = crate::db::insert_run_history(&state.db_pool, steam_id, game_count, unplayed_count).await;
+                        if let Err(e) = crate::db::insert_run_history(&state.db_pool, steam_id, game_count, unplayed_count).await {
+                            tracing::error!("Failed to insert run_history: {:?}", e);
+                        }
                         
                         // Step 2: Fetch recently played games
                         let recent_appids = crate::steam_api::fetch_recently_played(api_key, steam_id_u64)

@@ -13,13 +13,14 @@ mod auth;
 mod routes;
 
 use axum::{
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
 };
 use deadpool_postgres::{Config, Runtime, Pool};
 use tokio_postgres::NoTls;
 use tower_http::cors::{CorsLayer, Any};
 use tower_http::trace::TraceLayer;
+use axum::extract::DefaultBodyLimit;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::sync::Arc;
 
@@ -85,6 +86,12 @@ async fn main() {
         .route("/api/achievement/rating", post(routes::submit_achievement_rating))
         .route("/api/achievement/ratings", get(routes::get_user_achievement_ratings))
         .route("/api/achievement/comment", post(routes::submit_achievement_comment))
+        // Cloud sync endpoints
+        .route("/api/sync/status", get(routes::get_sync_status))
+        .route("/api/sync/download", get(routes::download_sync_data))
+        .route("/api/sync/upload", post(routes::upload_sync_data)
+            .layer(DefaultBodyLimit::max(routes::UPLOAD_BODY_LIMIT)))
+        .route("/api/sync/data", delete(routes::delete_sync_data))
         // Auth
         .route("/auth/steam", get(auth::steam_login))
         .route("/auth/steam/callback", get(auth::steam_callback))

@@ -16,7 +16,7 @@ egui_extras = { version = "0.33.3", features = ["all_loaders", "http", "image"] 
 egui_plot = "0.34.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
-reqwest = { version = "0.12", features = ["json", "blocking"] }
+reqwest = { version = "0.12", features = ["json", "blocking", "native-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
@@ -24,6 +24,7 @@ chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2.1"
 egui-phosphor = "0.11.0"
 toml = "0.9"
+open = "5"
 
 # WebSocket client for hybrid/remote modes
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }

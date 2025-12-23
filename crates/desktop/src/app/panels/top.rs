@@ -5,6 +5,7 @@ use egui_phosphor::regular;
 use overachiever_core::{DataMode, GdprConsent};
 
 use crate::app::SteamOverachieverApp;
+use crate::cloud_sync::CloudSyncState;
 
 impl SteamOverachieverApp {
     pub(crate) fn render_top_panel(&mut self, ctx: &egui::Context) {
@@ -82,8 +83,10 @@ impl SteamOverachieverApp {
     }
     
     fn render_settings_window(&mut self, ctx: &egui::Context) {
+        let mut show_settings = self.show_settings;
+        
         egui::Window::new(format!("{} Settings", regular::GEAR))
-            .open(&mut self.show_settings)
+            .open(&mut show_settings)
             .resizable(false)
             .collapsible(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -224,8 +227,186 @@ impl SteamOverachieverApp {
                     } else {
                         ui.colored_label(egui::Color32::GREEN, format!("{} Configuration valid", regular::CHECK));
                     }
+                    
+                    // Cloud Sync section
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+                    
+                    ui.heading(format!("{} Cloud Sync", regular::CLOUD));
+                    
+                    ui.add_space(8.0);
+                    
+                    // Cloud status display
+                    let cloud_state = self.cloud_sync_state.clone();
+                    let is_linked = self.config.cloud_token.is_some();
+                    
+                    // Show status messages
+                    match &cloud_state {
+                        CloudSyncState::NotLinked => {
+                            ui.label(egui::RichText::new(format!("{} Not linked", regular::CLOUD_SLASH)).color(egui::Color32::GRAY));
+                        }
+                        CloudSyncState::Linking => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Waiting for Steam login... (check your browser)");
+                            });
+                        }
+                        CloudSyncState::Idle => {
+                            ui.label(egui::RichText::new(format!("{} Linked", regular::CHECK)).color(egui::Color32::GREEN));
+                        }
+                        CloudSyncState::Checking => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Checking...");
+                            });
+                        }
+                        CloudSyncState::Uploading => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Uploading...");
+                            });
+                        }
+                        CloudSyncState::Downloading => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Downloading...");
+                            });
+                        }
+                        CloudSyncState::Deleting => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Deleting...");
+                            });
+                        }
+                        CloudSyncState::Success(msg) => {
+                            ui.colored_label(egui::Color32::GREEN, format!("{} {}", regular::CHECK, msg));
+                        }
+                        CloudSyncState::Error(msg) => {
+                            ui.colored_label(egui::Color32::RED, format!("{} {}", regular::WARNING, msg));
+                        }
+                    }
+                    
+                    ui.add_space(8.0);
+                    
+                    // Buttons
+                    let is_busy = matches!(cloud_state, CloudSyncState::Checking | CloudSyncState::Uploading | CloudSyncState::Downloading | CloudSyncState::Deleting | CloudSyncState::Linking);
+                    
+                    let mut link_clicked = false;
+                    let mut unlink_clicked = false;
+                    let mut upload_clicked = false;
+                    let mut download_clicked = false;
+                    let mut delete_clicked = false;
+                    
+                    if !is_linked {
+                        // Not linked - show link button
+                        if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Link with Steam", regular::STEAM_LOGO))).clicked() {
+                            link_clicked = true;
+                        }
+                    } else {
+                        // Linked - show action buttons
+                        if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Upload data to overachiever.space", regular::CLOUD_ARROW_UP))).clicked() {
+                            upload_clicked = true;
+                        }
+                        if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Download data from overachiever.space", regular::CLOUD_ARROW_DOWN))).clicked() {
+                            download_clicked = true;
+                        }
+                        if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Remove data from overachiever.space", regular::TRASH))).clicked() {
+                            delete_clicked = true;
+                        }
+                        
+                        ui.add_space(4.0);
+                        if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Unlink account", regular::LINK_BREAK))).clicked() {
+                            unlink_clicked = true;
+                        }
+                    }
+                    
+                    // Handle clicks - set pending action for confirmation
+                    if link_clicked {
+                        self.start_cloud_link();
+                    }
+                    if unlink_clicked {
+                        self.unlink_cloud();
+                    }
+                    if upload_clicked {
+                        self.pending_cloud_action = Some(crate::app::CloudAction::Upload);
+                    }
+                    if download_clicked {
+                        self.pending_cloud_action = Some(crate::app::CloudAction::Download);
+                    }
+                    if delete_clicked {
+                        self.pending_cloud_action = Some(crate::app::CloudAction::Delete);
+                    }
                 });
             });
+        
+        self.show_settings = show_settings;
+        
+        // Render cloud action confirmation dialog
+        self.render_cloud_confirm_dialog(ctx);
+    }
+    
+    /// Render confirmation dialog for cloud actions
+    fn render_cloud_confirm_dialog(&mut self, ctx: &egui::Context) {
+        use crate::app::CloudAction;
+        
+        let pending = self.pending_cloud_action.clone();
+        if pending.is_none() {
+            return;
+        }
+        let action = pending.unwrap();
+        
+        let (title, message, confirm_text) = match &action {
+            CloudAction::Upload => (
+                "Upload to Cloud",
+                "This will upload all your local data to overachiever.space.\nAny existing cloud data will be replaced.",
+                "Upload"
+            ),
+            CloudAction::Download => (
+                "Download from Cloud", 
+                "This will download data from overachiever.space and replace your local data.",
+                "Download"
+            ),
+            CloudAction::Delete => (
+                "Remove from Cloud",
+                "This will permanently delete all your data from overachiever.space.\nYour local data will not be affected.",
+                "Delete"
+            ),
+        };
+        
+        let mut confirmed = false;
+        let mut cancelled = false;
+        
+        egui::Window::new(format!("{} {}", regular::WARNING, title))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add_space(8.0);
+                ui.label(message);
+                ui.add_space(16.0);
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                    if ui.button(confirm_text).clicked() {
+                        confirmed = true;
+                    }
+                });
+            });
+        
+        if cancelled {
+            self.pending_cloud_action = None;
+        }
+        if confirmed {
+            self.pending_cloud_action = None;
+            match action {
+                CloudAction::Upload => self.upload_to_cloud(),
+                CloudAction::Download => self.download_from_cloud(),
+                CloudAction::Delete => self.delete_from_cloud(),
+            }
+        }
     }
     
     /// Render GDPR modal for hybrid/remote modes

@@ -18,29 +18,47 @@ pub struct Claims {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SteamCallbackParams {
-    #[serde(rename = "openid.claimed_id")]
-    claimed_id: Option<String>,
-    // Add other OpenID params as needed
+pub struct SteamLoginParams {
+    /// For desktop app: localhost callback URL
+    pub redirect_uri: Option<String>,
 }
 
-pub async fn steam_login() -> impl IntoResponse {
-    // Redirect to Steam OpenID
-    let return_url = std::env::var("STEAM_CALLBACK_URL")
-        .unwrap_or_else(|_| "http://localhost:8080/auth/steam/callback".to_string());
+pub async fn steam_login(
+    Query(params): Query<SteamLoginParams>,
+) -> impl IntoResponse {
+    // Use custom redirect_uri for desktop, or default for web
+    let return_url = if let Some(redirect_uri) = params.redirect_uri {
+        // Desktop flow: callback to localhost, but we need to go through our server first
+        let base_callback = std::env::var("STEAM_CALLBACK_URL")
+            .unwrap_or_else(|_| "http://localhost:8080/auth/steam/callback".to_string());
+        format!("{}?redirect_uri={}", base_callback, urlencoding::encode(&redirect_uri))
+    } else {
+        std::env::var("STEAM_CALLBACK_URL")
+            .unwrap_or_else(|_| "http://localhost:8080/auth/steam/callback".to_string())
+    };
+    
+    let realm = return_url.split("/auth").next().unwrap_or(&return_url);
     
     let steam_openid_url = format!(
         "https://steamcommunity.com/openid/login?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to={}&openid.realm={}&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select",
         urlencoding::encode(&return_url),
-        urlencoding::encode(&return_url.replace("/auth/steam/callback", ""))
+        urlencoding::encode(realm)
     );
     
     Redirect::temporary(&steam_openid_url)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SteamCallbackFullParams {
+    #[serde(rename = "openid.claimed_id")]
+    claimed_id: Option<String>,
+    /// For desktop app: where to redirect with the token
+    redirect_uri: Option<String>,
+}
+
 pub async fn steam_callback(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<SteamCallbackParams>,
+    Query(params): Query<SteamCallbackFullParams>,
 ) -> impl IntoResponse {
     // Extract Steam ID from claimed_id
     let steam_id = params.claimed_id
@@ -48,6 +66,9 @@ pub async fn steam_callback(
         .unwrap_or_default();
     
     if steam_id.is_empty() {
+        if let Some(redirect_uri) = params.redirect_uri {
+            return Redirect::temporary(&format!("{}?error=auth_failed", redirect_uri));
+        }
         return Redirect::temporary("/?error=auth_failed");
     }
     
@@ -59,16 +80,22 @@ pub async fn steam_callback(
     // Create/update user in database
     if let Err(e) = crate::db::get_or_create_user(&state.db_pool, &steam_id, &display_name, None).await {
         tracing::error!("Failed to create user {}: {:?}", steam_id, e);
-        return Redirect::temporary(&format!("/?error=db_error&details={}", urlencoding::encode(&format!("{:?}", e))));
+        let error_str = format!("{:?}", e);
+        let error_msg = urlencoding::encode(&error_str);
+        if let Some(redirect_uri) = params.redirect_uri {
+            return Redirect::temporary(&format!("{}?error=db_error&details={}", redirect_uri, error_msg));
+        }
+        return Redirect::temporary(&format!("/?error=db_error&details={}", error_msg));
     }
     tracing::info!("User {} created/updated successfully", steam_id);
     
-    // Create JWT token
+    // Create JWT token (30 days for desktop, 7 days for web)
+    let expiry_days = if params.redirect_uri.is_some() { 30 } else { 7 };
     let claims = Claims {
         steam_id: steam_id.clone(),
         display_name,
         avatar_url: None,
-        exp: (chrono::Utc::now() + chrono::Duration::days(7)).timestamp() as usize,
+        exp: (chrono::Utc::now() + chrono::Duration::days(expiry_days)).timestamp() as usize,
     };
     
     let token = encode(
@@ -77,8 +104,12 @@ pub async fn steam_callback(
         &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
     ).unwrap_or_default();
     
-    // Redirect to frontend with token
-    Redirect::temporary(&format!("/?token={}", token))
+    // Redirect to desktop callback or web frontend
+    if let Some(redirect_uri) = params.redirect_uri {
+        Redirect::temporary(&format!("{}?token={}&steam_id={}", redirect_uri, token, steam_id))
+    } else {
+        Redirect::temporary(&format!("/?token={}", token))
+    }
 }
 
 pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {

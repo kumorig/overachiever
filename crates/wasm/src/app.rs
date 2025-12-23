@@ -315,6 +315,8 @@ impl WasmApp {
                     }
                 }
                 overachiever_core::ServerMessage::History { run_history, achievement_history, log_entries } => {
+                    web_sys::console::log_1(&format!("Received History: {} run_history, {} achievement_history, {} log_entries", 
+                        run_history.len(), achievement_history.len(), log_entries.len()).into());
                     self.run_history = run_history;
                     self.achievement_history = achievement_history;
                     self.log_entries = log_entries;

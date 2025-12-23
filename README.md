@@ -51,14 +51,13 @@ About half of the code has been "vibe-coded", feel free to help clean-up any mes
 
 ## Roadmap
 Feel free to open an issue with suggestions.
-- [x] live WASM version: https://overachiever.space (in progress)
 - [ ] WASM version has lots of duplicated code with desktop version (AI, am I right?) Refactor plz.
-- [ ] Improve the graphs, but lets run the app a few weeks so we have some data to work with first.
+- [ ] Improve the graphs.
 - [ ] backend for comments ratings on achievements. 
 - [ ] help users find easy achievements (need more data first?).
 - [ ] Optimization: Pack icon files into single binary blob/texture atlas to reduce file count. Option to not cache icons to disk for desktop.
-- [ ] Feature: export of achievement data to CSV/JSON.
-- [ ] Problem (important for the future!!): If we ever get a few more users, and more than one user scans at the same time, we will hit rate limits. We should implement some kind of queue. And run a backend service to handle requests. -- Currently if you leave the app, requests will stop, but the backend could keep going. its also a security problem to let the client trigger requests indescriminately. 
+- [ ] Feature: export of achievement data.
+- [ ] (important for the future!!): If we ever get a few more users, and more than one user scans at the same time, we will hit rate limits. We should implement some kind of queue. And run a backend service to handle requests. -- Currently if you leave the app, requests will stop, but the backend could keep going. its also a security problem to let the client trigger requests indescriminately. 
 
 ## License
 This project is licensed under the MIT License. See the `LICENSE` file for details.

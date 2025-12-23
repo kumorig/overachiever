@@ -292,3 +292,47 @@ impl GdprConsent {
         matches!(self, GdprConsent::Accepted)
     }
 }
+
+// ============================================================================
+// Cloud Sync Types
+// ============================================================================
+
+/// Lightweight achievement data for cloud sync (no icon URLs - saves bandwidth)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncAchievement {
+    pub appid: u64,
+    pub apiname: String,
+    pub achieved: bool,
+    pub unlocktime: Option<DateTime<Utc>>,
+}
+
+impl From<&GameAchievement> for SyncAchievement {
+    fn from(a: &GameAchievement) -> Self {
+        Self {
+            appid: a.appid,
+            apiname: a.apiname.clone(),
+            achieved: a.achieved,
+            unlocktime: a.unlocktime,
+        }
+    }
+}
+
+/// Full user data for cloud sync (upload/download)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudSyncData {
+    pub steam_id: String,
+    pub games: Vec<Game>,
+    pub achievements: Vec<SyncAchievement>,
+    pub run_history: Vec<RunHistory>,
+    pub achievement_history: Vec<AchievementHistory>,
+    pub exported_at: DateTime<Utc>,
+}
+
+/// Cloud sync status response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudSyncStatus {
+    pub has_data: bool,
+    pub game_count: i32,
+    pub achievement_count: i32,
+    pub last_sync: Option<DateTime<Utc>>,
+}

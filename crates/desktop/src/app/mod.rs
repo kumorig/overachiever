@@ -7,10 +7,12 @@ use crate::config::Config;
 use crate::db::{get_all_games, get_run_history, get_achievement_history, get_log_entries, open_connection, get_last_update, finalize_migration, ensure_user};
 use crate::icon_cache::IconCache;
 use crate::ui::{AppState, SortColumn, SortOrder, TriFilter, ProgressReceiver};
-use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel};
+use crate::cloud_sync::{CloudSyncState, AuthResult, CloudOpResult};
+use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel, CloudSyncStatus};
 
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 pub struct SteamOverachieverApp {
@@ -52,6 +54,23 @@ pub struct SteamOverachieverApp {
     // Graph tab selections (0 = first option, 1 = second option)
     pub(crate) games_graph_tab: usize,
     pub(crate) achievements_graph_tab: usize,
+    // Cloud sync state
+    pub(crate) cloud_sync_state: CloudSyncState,
+    pub(crate) cloud_status: Option<CloudSyncStatus>,
+    // OAuth callback receiver (for Steam login)
+    pub(crate) auth_receiver: Option<Receiver<Result<AuthResult, String>>>,
+    // Cloud operation receiver (for async upload/download/delete)
+    pub(crate) cloud_op_receiver: Option<Receiver<Result<CloudOpResult, String>>>,
+    // Pending cloud action (for confirmation dialog)
+    pub(crate) pending_cloud_action: Option<CloudAction>,
+}
+
+/// Cloud action pending confirmation
+#[derive(Debug, Clone, PartialEq)]
+pub enum CloudAction {
+    Upload,
+    Download,
+    Delete,
 }
 
 impl SteamOverachieverApp {
@@ -72,6 +91,7 @@ impl SteamOverachieverApp {
         let achievement_history = get_achievement_history(&conn, steam_id).unwrap_or_default();
         let log_entries = get_log_entries(&conn, steam_id, 30).unwrap_or_default();
         let last_update_time = get_last_update(&conn).unwrap_or(None);
+        let is_cloud_linked = config.cloud_token.is_some();
         
         let mut app = Self {
             config,
@@ -100,6 +120,11 @@ impl SteamOverachieverApp {
             sidebar_panel: SidebarPanel::Stats,
             games_graph_tab: 0,
             achievements_graph_tab: 0,
+            cloud_sync_state: if is_cloud_linked { CloudSyncState::Idle } else { CloudSyncState::NotLinked },
+            cloud_status: None,
+            auth_receiver: None,
+            cloud_op_receiver: None,
+            pending_cloud_action: None,
         };
         
         // Apply consistent sorting after loading from database
@@ -116,12 +141,16 @@ impl eframe::App for SteamOverachieverApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.check_progress();
         self.cleanup_expired_flashes();
+        self.check_auth_callback();
+        self.check_cloud_operation();
         
         let is_busy = self.state.is_busy();
         let has_flashing = !self.updated_games.is_empty();
+        let is_linking = self.auth_receiver.is_some();
+        let is_cloud_op = self.cloud_op_receiver.is_some();
         
         // Request repaint while busy or while animations are active
-        if is_busy || has_flashing {
+        if is_busy || has_flashing || is_linking || is_cloud_op {
             ctx.request_repaint();
         }
         

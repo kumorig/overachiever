@@ -13,10 +13,15 @@
 
 ## Project Conventions
 
-* Dear Copilot Agent: Do not prompt the user (me) to run command: "npm run deploy",  then read the output and then generate a response. Instead skip to making the response Immediately and only notify the user that we can deploy now. (You are eating my tokens, stop it!)
+* Do not deploy for the user (me). Never. Tell me when we need to deploy. 
 
 * we want to keep as much code shared between desktop and wasm as possible, so avoid platform-specific code in core. If needed, use `cfg(target_arch = "wasm32")` or similar.
 
 ## WASM Gotchas
 
 * **egui_plot in WASM**: Plots must always be rendered, even with empty data. Use `PlotPoints::default()` for empty state. Never early-return before showing the plot or it won't render at all in WASM (layout issue).
+
+## Server Access
+
+* **SSH to server**: Use `plink -no-antispoof tatsugo` to run commands on the production server
+* **PostgreSQL**: Run `plink -no-antispoof tatsugo "sudo -u postgres psql -d overachiever -c 'YOUR SQL HERE'"` to query the database
