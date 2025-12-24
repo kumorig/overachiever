@@ -7,13 +7,22 @@ use overachiever_core::{GdprConsent, DATA_HANDLING_DESCRIPTION};
 use crate::app::SteamOverachieverApp;
 use crate::cloud_sync::CloudSyncState;
 
+// Build info embedded at compile time
+const BUILD_NUMBER: &str = env!("BUILD_NUMBER");
+const BUILD_DATETIME: &str = env!("BUILD_DATETIME");
+
 impl SteamOverachieverApp {
     pub(crate) fn render_top_panel(&mut self, ctx: &egui::Context) {
         let is_busy = self.state.is_busy();
         
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("Overachiever v3");
+                let heading = ui.heading("Overachiever");
+                heading.on_hover_text(format!(
+                    "Build #{}\n{}",
+                    BUILD_NUMBER,
+                    BUILD_DATETIME
+                ));
                 ui.separator();
                 
                 // Update button - for recently played games

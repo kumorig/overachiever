@@ -503,6 +503,7 @@ impl SteamOverachieverApp {
         }
     }
     
+    #[allow(dead_code)]
     pub(crate) fn check_cloud_status(&mut self) {
         use crate::cloud_sync::CloudSyncState;
         

@@ -63,6 +63,9 @@ fn init_tables(conn: &Connection) -> Result<()> {
     
     // Migration: add unplayed_games column if missing
     migrate_add_unplayed_games(conn)?;
+    
+    // Migration: add unplayed_games_total column if missing
+    migrate_add_unplayed_games_total(conn)?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS achievement_history (
@@ -311,6 +314,27 @@ fn migrate_add_unplayed_games(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Add unplayed_games_total column to run_history if it doesn't exist
+fn migrate_add_unplayed_games_total(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('run_history') WHERE name = 'unplayed_games_total'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(true);
+
+    if !has_column {
+        let _ = conn.execute(
+            "ALTER TABLE run_history ADD COLUMN unplayed_games_total INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+    }
+
+    Ok(())
+}
+
 /// Update migrated data with the actual steam_id
 pub fn finalize_migration(conn: &Connection, steam_id: &str) -> Result<()> {
     conn.execute(
@@ -474,18 +498,18 @@ pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -
     Ok(games)
 }
 
-pub fn insert_run_history(conn: &Connection, steam_id: &str, total_games: i32, unplayed_games: i32) -> Result<()> {
+pub fn insert_run_history(conn: &Connection, steam_id: &str, total_games: i32, unplayed_games_total: i32) -> Result<()> {
     let now = Utc::now();
     conn.execute(
-        "INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games) VALUES (?1, ?2, ?3, ?4)",
-        (steam_id, now.to_rfc3339(), total_games, unplayed_games),
+        "INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games, unplayed_games_total) VALUES (?1, ?2, ?3, 0, ?4)",
+        (steam_id, now.to_rfc3339(), total_games, unplayed_games_total),
     )?;
     Ok(())
 }
 
 pub fn get_run_history(conn: &Connection, steam_id: &str) -> Result<Vec<RunHistory>> {
     let mut stmt = conn.prepare(
-        "SELECT id, run_at, total_games, COALESCE(unplayed_games, 0) FROM run_history WHERE steam_id = ?1 ORDER BY run_at"
+        "SELECT id, run_at, total_games, COALESCE(unplayed_games, 0), COALESCE(unplayed_games_total, 0) FROM run_history WHERE steam_id = ?1 ORDER BY run_at"
     )?;
     
     let history = stmt.query_map([steam_id], |row| {
@@ -499,6 +523,7 @@ pub fn get_run_history(conn: &Connection, steam_id: &str) -> Result<Vec<RunHisto
             run_at,
             total_games: row.get(2)?,
             unplayed_games: row.get(3)?,
+            unplayed_games_total: row.get(4)?,
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -854,14 +879,15 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
     for rh in &data.run_history {
         let played_games = rh.total_games - rh.unplayed_games;
         conn.execute(
-            "INSERT INTO run_history (steam_id, recorded_at, total_games, played_games, unplayed_games)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO run_history (steam_id, recorded_at, total_games, played_games, unplayed_games, unplayed_games_total)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 steam_id,
                 rh.run_at.to_rfc3339(),
                 rh.total_games,
                 played_games,
                 rh.unplayed_games,
+                rh.unplayed_games_total,
             ],
         )?;
     }

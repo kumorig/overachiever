@@ -15,7 +15,9 @@
 
 * Do not deploy for the user (me). Never. Tell me when we need to deploy. 
 
-* we want to keep as much code shared between desktop and wasm as possible, so avoid platform-specific code in core. If needed, use `cfg(target_arch = "wasm32")` or similar.
+* we want to keep as much code shared between desktop and wasm as possible.
+
+* tooltips should appear instantly, we might have an utility for this.
 
 ## WASM Gotchas
 

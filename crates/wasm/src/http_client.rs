@@ -46,6 +46,7 @@ pub async fn submit_achievement_rating(
 }
 
 /// Submit an achievement comment via REST API
+#[allow(dead_code)]
 pub async fn submit_achievement_comment(
     token: &str,
     achievements: Vec<(u64, String)>,
@@ -123,6 +124,7 @@ struct AchievementRatingRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct AchievementRatingResponse {
     pub success: bool,
     pub appid: u64,
@@ -130,12 +132,14 @@ pub struct AchievementRatingResponse {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct AchievementCommentRequest {
     achievements: Vec<(u64, String)>,
     comment: String,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct AchievementCommentResponse {
     pub success: bool,
     pub count: usize,

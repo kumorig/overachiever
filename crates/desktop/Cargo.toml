@@ -32,3 +32,4 @@ futures-util = "0.3"
 
 [build-dependencies]
 winresource = "0.1"
+chrono = "0.4"

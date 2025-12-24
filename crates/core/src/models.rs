@@ -95,7 +95,11 @@ pub struct RunHistory {
     pub id: i64,
     pub run_at: DateTime<Utc>,
     pub total_games: i32,
+    /// Unplayed games with achievements
     pub unplayed_games: i32,
+    /// Unplayed games total (regardless of achievements)
+    #[serde(default)]
+    pub unplayed_games_total: i32,
 }
 
 /// History of achievement progress over time

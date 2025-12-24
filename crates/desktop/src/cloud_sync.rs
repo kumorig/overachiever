@@ -22,6 +22,7 @@ pub enum CloudSyncState {
     Idle,
     NotLinked,
     Linking,
+    #[allow(dead_code)]
     Checking,
     Uploading,
     Downloading,
@@ -34,6 +35,7 @@ pub enum CloudSyncState {
 #[derive(Debug, Clone)]
 pub struct AuthResult {
     pub token: String,
+    #[allow(dead_code)]
     pub steam_id: String,
 }
 

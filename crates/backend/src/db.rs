@@ -359,7 +359,7 @@ pub async fn get_run_history(pool: &Pool, steam_id: &str) -> Result<Vec<overachi
     
     let rows = client.query(
         r#"
-        SELECT id::bigint as id, run_at, total_games, COALESCE(unplayed_games, 0) as unplayed_games
+        SELECT id::bigint as id, run_at, total_games, COALESCE(unplayed_games, 0) as unplayed_games, COALESCE(unplayed_games_total, 0) as unplayed_games_total
         FROM run_history
         WHERE steam_id = $1
         ORDER BY run_at
@@ -373,6 +373,7 @@ pub async fn get_run_history(pool: &Pool, steam_id: &str) -> Result<Vec<overachi
             run_at: row.get("run_at"),
             total_games: row.get("total_games"),
             unplayed_games: row.get("unplayed_games"),
+            unplayed_games_total: row.get("unplayed_games_total"),
         }
     }).collect();
     
@@ -409,17 +410,17 @@ pub async fn get_achievement_history(pool: &Pool, steam_id: &str) -> Result<Vec<
 }
 
 /// Record a run history entry
-pub async fn insert_run_history(pool: &Pool, steam_id: &str, total_games: i32, unplayed_games: i32) -> Result<(), DbError> {
+pub async fn insert_run_history(pool: &Pool, steam_id: &str, total_games: i32, unplayed_games_total: i32) -> Result<(), DbError> {
     let client = pool.get().await?;
     let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
     let now = Utc::now();
     
     client.execute(
         r#"
-        INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games, unplayed_games_total)
+        VALUES ($1, $2, $3, 0, $4)
         "#,
-        &[&steam_id_int, &now, &total_games, &unplayed_games]
+        &[&steam_id_int, &now, &total_games, &unplayed_games_total]
     ).await?;
     
     Ok(())
@@ -719,8 +720,8 @@ pub async fn upload_cloud_sync_data(pool: &Pool, data: &CloudSyncData) -> Result
     // Insert run history
     for rh in &data.run_history {
         transaction.execute(
-            "INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games) VALUES ($1, $2, $3, $4)",
-            &[&steam_id_int, &rh.run_at, &rh.total_games, &rh.unplayed_games]
+            "INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games, unplayed_games_total) VALUES ($1, $2, $3, $4, $5)",
+            &[&steam_id_int, &rh.run_at, &rh.total_games, &rh.unplayed_games, &rh.unplayed_games_total]
         ).await?;
     }
     

@@ -8,6 +8,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{MessageEvent, WebSocket, ErrorEvent, CloseEvent};
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum WsState {
     Connecting,
     Open,
@@ -116,10 +117,12 @@ impl WsClient {
         self.send(&ClientMessage::FetchHistory);
     }
     
+    #[allow(dead_code)]
     pub fn submit_rating(&self, appid: u64, rating: u8, comment: Option<String>) {
         self.send(&ClientMessage::SubmitRating { appid, rating, comment });
     }
     
+    #[allow(dead_code)]
     pub fn get_community_ratings(&self, appid: u64) {
         self.send(&ClientMessage::GetCommunityRatings { appid });
     }
