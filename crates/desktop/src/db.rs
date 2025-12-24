@@ -929,6 +929,7 @@ pub fn set_achievement_rating(conn: &Connection, steam_id: &str, appid: u64, api
 }
 
 /// Get a user's rating for a specific achievement
+#[allow(dead_code)]
 pub fn get_achievement_rating(conn: &Connection, steam_id: &str, appid: u64, apiname: &str) -> Result<Option<u8>> {
     let result = conn.query_row(
         "SELECT rating FROM user_achievement_ratings WHERE steam_id = ?1 AND appid = ?2 AND apiname = ?3",
