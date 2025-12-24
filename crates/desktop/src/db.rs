@@ -514,11 +514,11 @@ pub fn update_latest_run_history_unplayed(conn: &Connection, steam_id: &str, unp
     Ok(())
 }
 
-/// Backfill unplayed_games for all run_history entries
-/// Uses the current unplayed count as a baseline since we don't have historical data
+/// Backfill unplayed_games for run_history entries that still have 0
+/// Only updates entries with unplayed_games = 0 (from before this feature was added)
 pub fn backfill_run_history_unplayed(conn: &Connection, steam_id: &str, current_unplayed: i32) -> Result<()> {
     conn.execute(
-        "UPDATE run_history SET unplayed_games = ?1 WHERE steam_id = ?2",
+        "UPDATE run_history SET unplayed_games = ?1 WHERE steam_id = ?2 AND unplayed_games = 0",
         (current_unplayed, steam_id),
     )?;
     Ok(())

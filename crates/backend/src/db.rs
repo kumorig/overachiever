@@ -442,8 +442,8 @@ pub async fn update_latest_run_history_unplayed(pool: &Pool, steam_id: &str, unp
     Ok(())
 }
 
-/// Backfill unplayed_games for all run_history entries
-/// Uses the current unplayed count as a baseline since we don't have historical data
+/// Backfill unplayed_games for run_history entries that still have 0
+/// Only updates entries with unplayed_games = 0 (from before this feature was added)
 pub async fn backfill_run_history_unplayed(pool: &Pool, steam_id: &str, current_unplayed: i32) -> Result<(), DbError> {
     let client = pool.get().await?;
     let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
@@ -452,7 +452,7 @@ pub async fn backfill_run_history_unplayed(pool: &Pool, steam_id: &str, current_
         r#"
         UPDATE run_history 
         SET unplayed_games = $1 
-        WHERE steam_id = $2
+        WHERE steam_id = $2 AND unplayed_games = 0
         "#,
         &[&current_unplayed, &steam_id_int]
     ).await?;
