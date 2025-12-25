@@ -63,6 +63,15 @@ pub enum ClientMessage {
     /// Get community tips for an achievement
     GetCommunityTips { appid: u64, apiname: String },
     
+    /// View another user's library by short_id (no authentication required)
+    ViewGuestLibrary { short_id: String },
+    
+    /// Request achievements for a game when viewing as guest
+    FetchGuestAchievements { short_id: String, appid: u64 },
+    
+    /// Request history data when viewing as guest
+    FetchGuestHistory { short_id: String },
+    
     /// Ping to keep connection alive
     Ping,
 }
@@ -143,6 +152,15 @@ pub enum ServerMessage {
         achievement_history: Vec<AchievementHistory>,
         log_entries: Vec<LogEntry>,
     },
+    
+    /// Guest library view (another user's games)
+    GuestLibrary {
+        user: UserProfile,
+        games: Vec<Game>,
+    },
+    
+    /// Guest library not found (invalid short_id)
+    GuestNotFound { short_id: String },
     
     /// Generic error
     Error { 

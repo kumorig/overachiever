@@ -121,6 +121,24 @@ impl WsClient {
         self.send(&ClientMessage::FetchHistory);
     }
     
+    /// View another user's library by short_id (no authentication required)
+    pub fn view_guest_library(&self, short_id: &str) {
+        self.send(&ClientMessage::ViewGuestLibrary { short_id: short_id.to_string() });
+    }
+    
+    /// Fetch achievements for a game when viewing as guest
+    pub fn fetch_guest_achievements(&self, short_id: &str, appid: u64) {
+        self.send(&ClientMessage::FetchGuestAchievements { 
+            short_id: short_id.to_string(), 
+            appid 
+        });
+    }
+    
+    /// Fetch history when viewing as guest
+    pub fn fetch_guest_history(&self, short_id: &str) {
+        self.send(&ClientMessage::FetchGuestHistory { short_id: short_id.to_string() });
+    }
+    
     #[allow(dead_code)]
     pub fn submit_rating(&self, appid: u64, rating: u8, comment: Option<String>) {
         self.send(&ClientMessage::SubmitRating { appid, rating, comment });

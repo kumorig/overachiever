@@ -1,4 +1,7 @@
-### 0.3.3
+### 0.3.4
+* No longer require login to view libraries other people have linked.
+
+### 0.3.3 - 2025-12-25
 * allow updating single games with refresh-button in game table.
 * fix for games not being added automatically when appearing in recently played. (probably free games which weren't added by full scan?)
 * fix uneven striped background in the log-view.

@@ -140,6 +140,43 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 }
             }
             
+            // Guest viewing - no authentication required
+            ClientMessage::ViewGuestLibrary { short_id } => {
+                tracing::info!("Guest viewing library for short_id: {}", short_id);
+                match crate::db::get_user_by_short_id(&state.db_pool, &short_id).await {
+                    Ok(Some(user)) => {
+                        match crate::db::get_user_games_by_short_id(&state.db_pool, &short_id).await {
+                            Ok(Some(games)) => {
+                                tracing::info!("Returning {} games for guest view of {}", games.len(), short_id);
+                                ServerMessage::GuestLibrary { user, games }
+                            }
+                            Ok(None) => ServerMessage::GuestNotFound { short_id },
+                            Err(e) => ServerMessage::Error { message: format!("Database error: {:?}", e) }
+                        }
+                    }
+                    Ok(None) => ServerMessage::GuestNotFound { short_id },
+                    Err(e) => ServerMessage::Error { message: format!("Database error: {:?}", e) }
+                }
+            }
+            
+            ClientMessage::FetchGuestAchievements { short_id, appid } => {
+                match crate::db::get_game_achievements_by_short_id(&state.db_pool, &short_id, appid).await {
+                    Ok(Some(achievements)) => ServerMessage::Achievements { appid, achievements },
+                    Ok(None) => ServerMessage::GuestNotFound { short_id },
+                    Err(e) => ServerMessage::Error { message: e.to_string() }
+                }
+            }
+            
+            ClientMessage::FetchGuestHistory { short_id } => {
+                match crate::db::get_history_by_short_id(&state.db_pool, &short_id).await {
+                    Ok(Some((run_history, achievement_history, log_entries))) => {
+                        ServerMessage::History { run_history, achievement_history, log_entries }
+                    }
+                    Ok(None) => ServerMessage::GuestNotFound { short_id },
+                    Err(e) => ServerMessage::Error { message: e.to_string() }
+                }
+            }
+            
             ClientMessage::SyncFromSteam => {
                 if let Some(ref steam_id) = authenticated_steam_id {
                     if let Some(ref api_key) = state.steam_api_key {

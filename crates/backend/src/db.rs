@@ -48,6 +48,147 @@ impl std::fmt::Display for DbError {
     }
 }
 
+/// Get user info (steam_id, display_name, avatar_url) by short_id
+pub async fn get_user_by_short_id(pool: &Pool, short_id: &str) -> Result<Option<overachiever_core::UserProfile>, DbError> {
+    let client = pool.get().await?;
+    
+    let row = client.query_opt(
+        r#"
+        SELECT steam_id, display_name, avatar_url, short_id
+        FROM users
+        WHERE short_id = $1
+        "#,
+        &[&short_id]
+    ).await?;
+    
+    Ok(row.map(|row| {
+        overachiever_core::UserProfile {
+            steam_id: row.get::<_, i64>("steam_id").to_string(),
+            display_name: row.get("display_name"),
+            avatar_url: row.get("avatar_url"),
+            short_id: row.get("short_id"),
+        }
+    }))
+}
+
+/// Get games for a user by their short_id
+pub async fn get_user_games_by_short_id(pool: &Pool, short_id: &str) -> Result<Option<Vec<Game>>, DbError> {
+    let client = pool.get().await?;
+    
+    // First get the steam_id for this short_id
+    let user_row = client.query_opt(
+        "SELECT steam_id FROM users WHERE short_id = $1",
+        &[&short_id]
+    ).await?;
+    
+    let steam_id_int: i64 = match user_row {
+        Some(row) => row.get("steam_id"),
+        None => return Ok(None),
+    };
+    
+    let rows = client.query(
+        r#"
+        SELECT appid, name, playtime_forever, rtime_last_played, img_icon_url,
+               added_at, achievements_total, achievements_unlocked, last_sync
+        FROM user_games
+        WHERE steam_id = $1
+        ORDER BY name
+        "#,
+        &[&steam_id_int]
+    ).await?;
+    
+    let games = rows.into_iter().map(|row| {
+        Game {
+            appid: row.get::<_, i64>("appid") as u64,
+            name: row.get("name"),
+            playtime_forever: row.get::<_, i32>("playtime_forever") as u32,
+            rtime_last_played: row.get::<_, Option<i32>>("rtime_last_played").map(|t| t as u32),
+            img_icon_url: row.get("img_icon_url"),
+            added_at: row.get::<_, Option<DateTime<Utc>>>("added_at").unwrap_or_else(Utc::now),
+            achievements_total: row.get("achievements_total"),
+            achievements_unlocked: row.get("achievements_unlocked"),
+            last_achievement_scrape: row.get("last_sync"),
+        }
+    }).collect();
+    
+    Ok(Some(games))
+}
+
+/// Get achievements for a game by short_id (for guest viewing)
+pub async fn get_game_achievements_by_short_id(
+    pool: &Pool,
+    short_id: &str,
+    appid: u64,
+) -> Result<Option<Vec<GameAchievement>>, DbError> {
+    let client = pool.get().await?;
+    
+    // First get the steam_id for this short_id
+    let user_row = client.query_opt(
+        "SELECT steam_id FROM users WHERE short_id = $1",
+        &[&short_id]
+    ).await?;
+    
+    let steam_id_int: i64 = match user_row {
+        Some(row) => row.get("steam_id"),
+        None => return Ok(None),
+    };
+    
+    let rows = client.query(
+        r#"
+        SELECT ua.appid, ua.apiname, s.display_name as name, s.description,
+               s.icon, s.icon_gray, ua.achieved, ua.unlocktime
+        FROM user_achievements ua
+        LEFT JOIN achievement_schemas s ON ua.appid = s.appid AND ua.apiname = s.apiname
+        WHERE ua.steam_id = $1 AND ua.appid = $2
+        ORDER BY s.display_name
+        "#,
+        &[&steam_id_int, &(appid as i64)]
+    ).await?;
+    
+    let achievements = rows.into_iter().map(|row| {
+        GameAchievement {
+            appid: row.get::<_, i64>("appid") as u64,
+            apiname: row.get("apiname"),
+            name: row.get::<_, Option<String>>("name").unwrap_or_else(|| row.get("apiname")),
+            description: row.get("description"),
+            icon: row.get::<_, Option<String>>("icon").unwrap_or_default(),
+            icon_gray: row.get::<_, Option<String>>("icon_gray").unwrap_or_default(),
+            achieved: row.get("achieved"),
+            unlocktime: row.get("unlocktime"),
+        }
+    }).collect();
+    
+    Ok(Some(achievements))
+}
+
+/// Get history data for a user by short_id (for guest viewing)
+pub async fn get_history_by_short_id(
+    pool: &Pool,
+    short_id: &str,
+) -> Result<Option<(Vec<overachiever_core::RunHistory>, Vec<overachiever_core::AchievementHistory>, Vec<overachiever_core::LogEntry>)>, DbError> {
+    let client = pool.get().await?;
+    
+    // First get the steam_id for this short_id
+    let user_row = client.query_opt(
+        "SELECT steam_id FROM users WHERE short_id = $1",
+        &[&short_id]
+    ).await?;
+    
+    let steam_id_int: i64 = match user_row {
+        Some(row) => row.get("steam_id"),
+        None => return Ok(None),
+    };
+    
+    let steam_id = steam_id_int.to_string();
+    
+    // Use existing functions to get history data
+    let run_history = get_run_history(pool, &steam_id).await?;
+    let achievement_history = get_achievement_history(pool, &steam_id).await?;
+    let log_entries = get_log_entries(pool, &steam_id, 100).await?;
+    
+    Ok(Some((run_history, achievement_history, log_entries)))
+}
+
 pub async fn get_user_games(pool: &Pool, steam_id: &str) -> Result<Vec<Game>, DbError> {
     let client = pool.get().await?;
     let steam_id_int: i64 = steam_id.parse().unwrap_or(0);

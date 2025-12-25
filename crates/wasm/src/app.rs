@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use crate::ws_client::WsClient;
 use crate::storage::{
     get_token_from_url, get_token_from_storage, save_token_to_storage, clear_token_from_storage,
-    get_ws_url_from_location, get_gdpr_consent_from_storage,
+    get_ws_url_from_location, get_gdpr_consent_from_storage, get_short_id_from_url,
 };
 use crate::http_client::BuildInfo;
 
@@ -85,6 +85,10 @@ pub struct WasmApp {
     // Token from URL or storage
     pub(crate) auth_token: Option<String>,
     
+    // Guest viewing mode (viewing another user's library by short_id)
+    pub(crate) viewing_short_id: Option<String>,
+    pub(crate) viewing_user: Option<UserProfile>,
+    
     // GDPR consent status
     pub(crate) gdpr_consent: GdprConsent,
     
@@ -106,8 +110,15 @@ pub struct WasmApp {
 
 impl WasmApp {
     pub fn new() -> Self {
-        // Try to get token from URL params or localStorage
-        let auth_token = get_token_from_url().or_else(|| get_token_from_storage());
+        // Check if we're viewing someone else's library by short_id
+        let viewing_short_id = get_short_id_from_url();
+        
+        // Try to get token from URL params or localStorage (only if not in guest view mode)
+        let auth_token = if viewing_short_id.is_none() {
+            get_token_from_url().or_else(|| get_token_from_storage())
+        } else {
+            None
+        };
         
         // Auto-detect WebSocket URL from current page location
         let server_url = get_ws_url_from_location();
@@ -122,6 +133,12 @@ impl WasmApp {
         // Load GDPR consent from localStorage
         let gdpr_consent = get_gdpr_consent_from_storage();
         
+        let status = if viewing_short_id.is_some() {
+            "Connecting to view library...".to_string()
+        } else {
+            "Connecting...".to_string()
+        };
+        
         let mut app = Self {
             server_url,
             ws_client: None,
@@ -131,7 +148,7 @@ impl WasmApp {
             run_history: Vec::new(),
             achievement_history: Vec::new(),
             log_entries: Vec::new(),
-            status: "Connecting...".to_string(),
+            status,
             app_state: AppState::Idle,
             scan_progress: None,
             force_full_scan: false,
@@ -151,6 +168,8 @@ impl WasmApp {
             games_graph_tab: 0,
             achievements_graph_tab: 0,
             auth_token,
+            viewing_short_id,
+            viewing_user: None,
             gdpr_consent,
             build_info: Rc::new(RefCell::new(None)),
             navigation_target: None,
@@ -165,6 +184,11 @@ impl WasmApp {
         // Auto-connect on startup
         app.connect();
         app
+    }
+    
+    /// Returns true if we're viewing another user's library (guest mode)
+    pub fn is_guest_view(&self) -> bool {
+        self.viewing_short_id.is_some()
     }
     
     /// Fetch build info from server
@@ -212,9 +236,13 @@ impl WasmApp {
                 WsState::Open => {
                     if self.connection_state == ConnectionState::Connecting {
                         self.connection_state = ConnectionState::Connected;
-                        self.status = "Connected, authenticating...".to_string();
                         
-                        if let Some(token) = &self.auth_token.clone() {
+                        // Check if we're in guest viewing mode
+                        if let Some(ref short_id) = self.viewing_short_id.clone() {
+                            self.status = "Loading library...".to_string();
+                            client.view_guest_library(&short_id);
+                        } else if let Some(token) = &self.auth_token.clone() {
+                            self.status = "Connected, authenticating...".to_string();
                             client.authenticate(token);
                         } else {
                             self.show_login = true;
@@ -372,6 +400,25 @@ impl WasmApp {
                     self.run_history = run_history;
                     self.achievement_history = achievement_history;
                     self.log_entries = log_entries;
+                }
+                overachiever_core::ServerMessage::GuestLibrary { user, games } => {
+                    // Guest viewing mode - received another user's library
+                    self.viewing_user = Some(user.clone());
+                    self.games = games;
+                    self.games_loaded = true;
+                    self.status = format!("Viewing {}'s library", user.display_name);
+                    sort_games(&mut self.games, self.sort_column, self.sort_order);
+                    
+                    // Fetch history for guest view
+                    if let Some(ref short_id) = self.viewing_short_id.clone() {
+                        if let Some(client) = &self.ws_client {
+                            client.fetch_guest_history(&short_id);
+                        }
+                    }
+                }
+                overachiever_core::ServerMessage::GuestNotFound { short_id } => {
+                    self.status = format!("User not found: {}", short_id);
+                    self.connection_state = ConnectionState::Error(format!("User '{}' not found", short_id));
                 }
                 _ => {}
             }

@@ -19,6 +19,7 @@ impl WasmApp {
     pub fn render_top_panel(&mut self, ctx: &egui::Context) {
         let is_busy = self.app_state.is_busy();
         let is_authenticated = matches!(self.connection_state, ConnectionState::Authenticated(_));
+        let is_guest_view = self.is_guest_view();
         
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -33,42 +34,54 @@ impl WasmApp {
                 }
                 ui.separator();
                 
-                match &self.connection_state {
-                    ConnectionState::Disconnected | ConnectionState::Connecting => {
+                // Guest view mode
+                if is_guest_view {
+                    if let Some(ref user) = self.viewing_user {
+                        ui.colored_label(egui::Color32::from_rgb(100, 180, 255), 
+                            format!("{} Viewing {}'s library", regular::EYE, user.display_name));
+                    } else {
                         ui.spinner();
-                        ui.label("Connecting...");
+                        ui.label("Loading...");
                     }
-                    ConnectionState::Connected => {
-                        ui.spinner();
-                        ui.label("Authenticating...");
-                    }
-                    ConnectionState::Authenticated(user) => {
-                        ui.label(format!("{} {}", regular::USER, user.display_name));
-                        ui.separator();
-                        
-                        // Sync button
-                        if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Sync", regular::ARROWS_CLOCKWISE))).clicked() {
-                            self.start_sync();
+                } else {
+                    // Normal authenticated mode
+                    match &self.connection_state {
+                        ConnectionState::Disconnected | ConnectionState::Connecting => {
+                            ui.spinner();
+                            ui.label("Connecting...");
                         }
-                        
-                        // Full Scan button
-                        let needs_scan = self.games_needing_scrape();
-                        let scan_label = if needs_scan > 0 {
-                            format!("{} Full Scan ({})", regular::GAME_CONTROLLER, needs_scan)
-                        } else {
-                            format!("{} Full Scan", regular::GAME_CONTROLLER)
-                        };
-                        let can_scan = (needs_scan > 0 || self.force_full_scan) && self.games_loaded;
-                        if ui.add_enabled(!is_busy && can_scan, egui::Button::new(scan_label)).clicked() {
-                            self.start_full_scan();
+                        ConnectionState::Connected => {
+                            ui.spinner();
+                            ui.label("Authenticating...");
                         }
-                        
-                        ui.checkbox(&mut self.force_full_scan, "Force");
-                    }
-                    ConnectionState::Error(e) => {
-                        ui.colored_label(egui::Color32::RED, format!("{} {}", regular::WARNING, e));
-                        if ui.button("Retry").clicked() {
-                            self.connection_state = ConnectionState::Disconnected;
+                        ConnectionState::Authenticated(user) => {
+                            ui.label(format!("{} {}", regular::USER, user.display_name));
+                            ui.separator();
+                            
+                            // Sync button
+                            if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Sync", regular::ARROWS_CLOCKWISE))).clicked() {
+                                self.start_sync();
+                            }
+                            
+                            // Full Scan button
+                            let needs_scan = self.games_needing_scrape();
+                            let scan_label = if needs_scan > 0 {
+                                format!("{} Full Scan ({})", regular::GAME_CONTROLLER, needs_scan)
+                            } else {
+                                format!("{} Full Scan", regular::GAME_CONTROLLER)
+                            };
+                            let can_scan = (needs_scan > 0 || self.force_full_scan) && self.games_loaded;
+                            if ui.add_enabled(!is_busy && can_scan, egui::Button::new(scan_label)).clicked() {
+                                self.start_full_scan();
+                            }
+                            
+                            ui.checkbox(&mut self.force_full_scan, "Force");
+                        }
+                        ConnectionState::Error(e) => {
+                            ui.colored_label(egui::Color32::RED, format!("{} {}", regular::WARNING, e));
+                            if ui.button("Retry").clicked() {
+                                self.connection_state = ConnectionState::Disconnected;
+                            }
                         }
                     }
                 }
@@ -89,9 +102,20 @@ impl WasmApp {
                     ui.label(&self.status);
                 }
                 
-                // Logout on the right
+                // Right side - different for guest vs authenticated
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if is_authenticated {
+                    if is_guest_view {
+                        // Guest view mode - show link to own library
+                        if ui.button(format!("{} View your own library", regular::HOUSE))
+                            .on_hover_text("Sign in to view your own Steam library")
+                            .clicked() 
+                        {
+                            // Navigate to root
+                            if let Some(window) = web_sys::window() {
+                                let _ = window.location().set_href("/");
+                            }
+                        }
+                    } else if is_authenticated {
                         if ui.button(format!("{} Logout", regular::SIGN_OUT)).clicked() {
                             self.auth_token = None;
                             clear_token_from_storage();
@@ -136,7 +160,10 @@ impl WasmApp {
     // ========================================================================
     
     pub fn render_stats_panel(&mut self, ctx: &egui::Context) {
-        if !matches!(self.connection_state, ConnectionState::Authenticated(_)) {
+        // Show stats panel for authenticated users OR guest viewers with games loaded
+        let can_show = matches!(self.connection_state, ConnectionState::Authenticated(_)) 
+            || (self.is_guest_view() && self.games_loaded);
+        if !can_show {
             return;
         }
         
@@ -240,8 +267,18 @@ impl WasmApp {
     
     pub fn render_games_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if !matches!(self.connection_state, ConnectionState::Authenticated(_)) {
+            // Show login prompt only if not authenticated AND not in guest view
+            if !matches!(self.connection_state, ConnectionState::Authenticated(_)) && !self.is_guest_view() {
                 self.render_login_prompt(ui);
+                return;
+            }
+            
+            // In guest view mode, show loading spinner until we have the user info
+            if self.is_guest_view() && self.viewing_user.is_none() {
+                ui.centered_and_justified(|ui| {
+                    ui.spinner();
+                    ui.label("Loading library...");
+                });
                 return;
             }
             
@@ -250,6 +287,10 @@ impl WasmApp {
                     ui.centered_and_justified(|ui| {
                         ui.spinner();
                         ui.label("Loading games...");
+                    });
+                } else if self.is_guest_view() {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("This user hasn't synced any games yet.");
                     });
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -265,7 +306,13 @@ impl WasmApp {
                 return;
             }
             
-            ui.heading(format!("Games Library ({} games)", self.games.len()));
+            // Show whose library we're viewing
+            let heading_text = if let Some(ref user) = self.viewing_user {
+                format!("{}'s Library ({} games)", user.display_name, self.games.len())
+            } else {
+                format!("Games Library ({} games)", self.games.len())
+            };
+            ui.heading(heading_text);
             ui.separator();
             
             render_filter_bar(ui, self);
@@ -283,7 +330,12 @@ impl WasmApp {
             // Fetch achievements for any rows that need them
             if let Some(client) = &self.ws_client {
                 for appid in needs_fetch {
-                    client.fetch_achievements(appid);
+                    // Use guest method if viewing someone else's library
+                    if let Some(ref short_id) = self.viewing_short_id {
+                        client.fetch_guest_achievements(short_id, appid);
+                    } else {
+                        client.fetch_achievements(appid);
+                    }
                 }
             }
         });

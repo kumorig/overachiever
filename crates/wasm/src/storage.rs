@@ -20,6 +20,31 @@ pub fn get_token_from_url() -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
+/// Get short_id from URL path (e.g., /IHh1wBke -> Some("IHh1wBke"))
+/// Returns None for root path or paths that don't look like short_ids
+pub fn get_short_id_from_url() -> Option<String> {
+    web_sys::window()
+        .and_then(|w| w.location().pathname().ok())
+        .and_then(|path| {
+            // Strip leading slash and get the first path segment
+            let path = path.strip_prefix('/').unwrap_or(&path);
+            
+            // Ignore known paths that aren't short_ids
+            if path.is_empty() || path.starts_with("auth") || path.starts_with("api") 
+               || path.starts_with("ws") || path.starts_with("pkg") || path.starts_with("steam-media") {
+                return None;
+            }
+            
+            // Short IDs are 8 characters, alphanumeric
+            let short_id = path.split('/').next().unwrap_or("");
+            if short_id.len() == 8 && short_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+                Some(short_id.to_string())
+            } else {
+                None
+            }
+        })
+}
+
 pub fn get_token_from_storage() -> Option<String> {
     web_sys::window()
         .and_then(|w| w.local_storage().ok())
