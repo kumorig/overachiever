@@ -113,6 +113,10 @@ impl WsClient {
         self.send(&ClientMessage::FullScan { force });
     }
     
+    pub fn refresh_single_game(&self, appid: u64) {
+        self.send(&ClientMessage::RefreshSingleGame { appid });
+    }
+    
     pub fn fetch_history(&self) {
         self.send(&ClientMessage::FetchHistory);
     }

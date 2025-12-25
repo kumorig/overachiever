@@ -539,6 +539,16 @@ pub fn update_latest_run_history_unplayed(conn: &Connection, steam_id: &str, unp
     Ok(())
 }
 
+/// Update the total_games count for the most recent run_history entry
+/// Used when recently played games add new games not in GetOwnedGames (e.g., some F2P games)
+pub fn update_run_history_total(conn: &Connection, steam_id: &str, total_games: i32) -> Result<()> {
+    conn.execute(
+        "UPDATE run_history SET total_games = ?1 WHERE steam_id = ?2 AND id = (SELECT MAX(id) FROM run_history WHERE steam_id = ?2)",
+        (total_games, steam_id),
+    )?;
+    Ok(())
+}
+
 /// Backfill unplayed_games for run_history entries that still have 0
 /// Only updates entries with unplayed_games = 0 (from before this feature was added)
 pub fn backfill_run_history_unplayed(conn: &Connection, steam_id: &str, current_unplayed: i32) -> Result<()> {

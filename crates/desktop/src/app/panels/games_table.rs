@@ -100,6 +100,60 @@ impl GamesTablePlatform for SteamOverachieverApp {
     fn mark_scrolled_to_target(&mut self) {
         self.needs_scroll_to_target = false;
     }
+    
+    fn can_refresh_single_game(&self) -> bool {
+        // Desktop can always refresh if we have valid config
+        self.config.is_valid()
+    }
+    
+    fn request_single_game_refresh(&mut self, appid: u64) -> bool {
+        self.start_single_game_refresh(appid)
+    }
+    
+    fn is_single_game_refreshing(&self, appid: u64) -> bool {
+        self.single_game_refreshing == Some(appid)
+    }
+    
+    fn can_launch_game(&self) -> bool {
+        true
+    }
+    
+    fn launch_game(&mut self, appid: u64) {
+        let url = format!("steam://run/{}", appid);
+        if let Err(e) = open::that(&url) {
+            eprintln!("Failed to launch Steam game {}: {}", appid, e);
+        } else {
+            // Record launch time for cooldown
+            self.game_launch_times.insert(appid, std::time::Instant::now());
+        }
+    }
+    
+    fn get_launch_cooldown(&self, appid: u64) -> Option<f32> {
+        SteamOverachieverApp::get_launch_cooldown(self, appid)
+    }
+    
+    fn can_detect_installed(&self) -> bool {
+        true
+    }
+    
+    fn is_game_installed(&self, appid: u64) -> bool {
+        self.installed_games.contains(&appid)
+    }
+    
+    fn install_game(&self, appid: u64) {
+        let url = format!("steam://install/{}", appid);
+        if let Err(e) = open::that(&url) {
+            eprintln!("Failed to install Steam game {}: {}", appid, e);
+        }
+    }
+    
+    fn filter_installed(&self) -> TriFilter {
+        self.filter_installed
+    }
+    
+    fn set_filter_installed(&mut self, filter: TriFilter) {
+        self.filter_installed = filter;
+    }
 }
 
 impl SteamOverachieverApp {

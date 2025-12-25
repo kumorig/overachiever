@@ -28,6 +28,10 @@ pub struct Config {
     /// Cloud sync JWT token (obtained via Steam OpenID login)
     #[serde(default)]
     pub cloud_token: Option<String>,
+    
+    /// Debug: output recently played response to file
+    #[serde(default)]
+    pub debug_recently_played: bool,
 }
 
 impl Default for Config {
@@ -38,6 +42,7 @@ impl Default for Config {
             server_url: String::new(),
             gdpr_consent: GdprConsent::Unset,
             cloud_token: None,
+            debug_recently_played: false,
         }
     }
 }
@@ -87,5 +92,26 @@ impl Config {
     /// Get steam_id as u64 for API calls
     pub fn steam_id_u64(&self) -> Option<u64> {
         self.steam_id.trim().parse().ok()
+    }
+    
+    /// Extract short_id from the cloud_token JWT (without verification)
+    pub fn get_short_id(&self) -> Option<String> {
+        let token = self.cloud_token.as_ref()?;
+        
+        // JWT format: header.payload.signature
+        let parts: Vec<&str> = token.split('.').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        
+        // Decode the payload (second part) from base64
+        use base64::Engine;
+        let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[1])
+            .ok()?;
+        
+        // Parse as JSON and extract short_id
+        let payload: serde_json::Value = serde_json::from_slice(&payload_bytes).ok()?;
+        payload.get("short_id")?.as_str().map(String::from)
     }
 }

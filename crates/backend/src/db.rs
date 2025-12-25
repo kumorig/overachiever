@@ -3,6 +3,23 @@
 use deadpool_postgres::{Pool, PoolError};
 use overachiever_core::{Game, GameAchievement, GameRating, AchievementTip, LogEntry, CloudSyncData, CloudSyncStatus, SyncAchievement};
 use chrono::{DateTime, Utc};
+use rand::Rng;
+
+/// Characters used for generating short IDs (URL-safe, case-sensitive)
+/// Similar to YouTube's video ID format
+const SHORT_ID_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const SHORT_ID_LENGTH: usize = 8;
+
+/// Generate a random short ID (YouTube-style)
+pub fn generate_short_id() -> String {
+    let mut rng = rand::thread_rng();
+    (0..SHORT_ID_LENGTH)
+        .map(|_| {
+            let idx = rng.gen_range(0..SHORT_ID_CHARS.len());
+            SHORT_ID_CHARS[idx] as char
+        })
+        .collect()
+}
 
 #[derive(Debug)]
 pub enum DbError {
@@ -196,25 +213,73 @@ pub async fn get_or_create_user(
     steam_id: &str,
     display_name: &str,
     avatar_url: Option<&str>,
-) -> Result<(), DbError> {
+) -> Result<String, DbError> {
     let client = pool.get().await?;
     let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
     let now = Utc::now();
     let avatar: Option<String> = avatar_url.map(|s| s.to_string());
     
-    client.execute(
-        r#"
-        INSERT INTO users (steam_id, display_name, avatar_url, created_at, last_seen)
-        VALUES ($1, $2, $3, $4, $4)
-        ON CONFLICT (steam_id) DO UPDATE SET
-            display_name = EXCLUDED.display_name,
-            avatar_url = EXCLUDED.avatar_url,
-            last_seen = EXCLUDED.last_seen
-        "#,
-        &[&steam_id_int, &display_name, &avatar, &now]
+    // First, check if user exists and has a short_id
+    let existing = client.query_opt(
+        "SELECT short_id FROM users WHERE steam_id = $1",
+        &[&steam_id_int]
     ).await?;
     
-    Ok(())
+    if let Some(row) = existing {
+        // User exists, update last_seen and return existing short_id
+        client.execute(
+            r#"
+            UPDATE users SET
+                display_name = $2,
+                avatar_url = $3,
+                last_seen = $4
+            WHERE steam_id = $1
+            "#,
+            &[&steam_id_int, &display_name, &avatar, &now]
+        ).await?;
+        
+        // Return existing short_id or generate one if missing
+        if let Some(short_id) = row.get::<_, Option<String>>("short_id") {
+            return Ok(short_id);
+        }
+        
+        // Generate short_id for existing user (migration case)
+        let short_id = generate_unique_short_id(&client).await?;
+        client.execute(
+            "UPDATE users SET short_id = $2 WHERE steam_id = $1",
+            &[&steam_id_int, &short_id]
+        ).await?;
+        return Ok(short_id);
+    }
+    
+    // New user - generate unique short_id
+    let short_id = generate_unique_short_id(&client).await?;
+    
+    client.execute(
+        r#"
+        INSERT INTO users (steam_id, display_name, avatar_url, short_id, created_at, last_seen)
+        VALUES ($1, $2, $3, $4, $5, $5)
+        "#,
+        &[&steam_id_int, &display_name, &avatar, &short_id, &now]
+    ).await?;
+    
+    Ok(short_id)
+}
+
+/// Generate a unique short_id by checking for collisions
+async fn generate_unique_short_id(client: &deadpool_postgres::Client) -> Result<String, DbError> {
+    loop {
+        let short_id = generate_short_id();
+        let exists = client.query_opt(
+            "SELECT 1 FROM users WHERE short_id = $1",
+            &[&short_id]
+        ).await?;
+        
+        if exists.is_none() {
+            return Ok(short_id);
+        }
+        // Collision detected, try again (extremely rare with 62^8 possibilities)
+    }
 }
 
 /// Insert or update games for a user
@@ -438,6 +503,24 @@ pub async fn update_latest_run_history_unplayed(pool: &Pool, steam_id: &str, unp
         WHERE steam_id = $2 AND id = (SELECT MAX(id) FROM run_history WHERE steam_id = $2)
         "#,
         &[&unplayed_games, &steam_id_int]
+    ).await?;
+    
+    Ok(())
+}
+
+/// Update the total_games count for the most recent run_history entry
+/// Used when recently played games add new games not in GetOwnedGames (e.g., some F2P games)
+pub async fn update_run_history_total(pool: &Pool, steam_id: &str, total_games: i32) -> Result<(), DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
+    
+    client.execute(
+        r#"
+        UPDATE run_history 
+        SET total_games = $1 
+        WHERE steam_id = $2 AND id = (SELECT MAX(id) FROM run_history WHERE steam_id = $2)
+        "#,
+        &[&total_games, &steam_id_int]
     ).await?;
     
     Ok(())

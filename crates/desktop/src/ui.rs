@@ -1,4 +1,4 @@
-use crate::steam_api::{FetchProgress, ScrapeProgress, UpdateProgress};
+use crate::steam_api::{FetchProgress, ScrapeProgress, UpdateProgress, SingleGameRefreshProgress};
 use std::sync::mpsc::Receiver;
 
 /// Duration for the flash animation in seconds
@@ -52,4 +52,5 @@ pub enum ProgressReceiver {
     Fetch(Receiver<FetchProgress>),
     Scrape(Receiver<ScrapeProgress>),
     Update(Receiver<UpdateProgress>),
+    SingleGameRefresh(Receiver<SingleGameRefreshProgress>),
 }

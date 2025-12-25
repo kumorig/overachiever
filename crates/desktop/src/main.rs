@@ -7,6 +7,7 @@ mod config;
 mod db;
 mod icon_cache;
 mod steam_api;
+mod steam_library;
 mod ui;
 
 use app::SteamOverachieverApp;

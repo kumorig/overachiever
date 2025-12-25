@@ -106,6 +106,28 @@ impl SteamOverachieverApp {
         });
     }
     
+    /// Start a single game refresh
+    pub(crate) fn start_single_game_refresh(&mut self, appid: u64) -> bool {
+        if self.state.is_busy() || self.single_game_refreshing.is_some() {
+            return false;
+        }
+        
+        self.single_game_refreshing = Some(appid);
+        self.state = AppState::Idle; // Keep idle state but track the refresh separately
+        self.status = format!("Refreshing game {}...", appid);
+        
+        let (tx, rx): (Sender<crate::steam_api::SingleGameRefreshProgress>, _) = channel();
+        self.receiver = Some(ProgressReceiver::SingleGameRefresh(rx));
+        
+        thread::spawn(move || {
+            if let Err(e) = crate::steam_api::refresh_single_game(tx.clone(), appid) {
+                let _ = tx.send(crate::steam_api::SingleGameRefreshProgress::Error(e.to_string()));
+            }
+        });
+        
+        true
+    }
+    
     /// Check if the last update was more than 2 weeks ago
     pub(crate) fn is_update_stale(&self) -> bool {
         match self.last_update_time {
@@ -201,6 +223,9 @@ impl SteamOverachieverApp {
                             // Calculate and save achievement stats
                             self.save_achievement_history();
                             
+                            // Refresh installed games detection
+                            self.refresh_installed_games();
+                            
                             self.status = "Full scan complete!".to_string();
                             self.state = AppState::Idle;
                             return;
@@ -254,6 +279,9 @@ impl SteamOverachieverApp {
                             // Calculate and save achievement stats
                             self.save_achievement_history();
                             
+                            // Refresh installed games detection
+                            self.refresh_installed_games();
+                            
                             self.status = format!("Update complete! {} games updated.", updated_count);
                             self.state = AppState::Idle;
                             return;
@@ -266,6 +294,38 @@ impl SteamOverachieverApp {
                     }
                 }
                 self.receiver = Some(ProgressReceiver::Update(rx));
+            }
+            ProgressReceiver::SingleGameRefresh(rx) => {
+                while let Ok(progress) = rx.try_recv() {
+                    match progress {
+                        crate::steam_api::SingleGameRefreshProgress::Refreshing { appid } => {
+                            self.status = format!("Refreshing game {}...", appid);
+                        }
+                        crate::steam_api::SingleGameRefreshProgress::Done { appid, game, achievements } => {
+                            // Update the game in our list
+                            if let Some(g) = self.games.iter_mut().find(|g| g.appid == appid) {
+                                *g = game;
+                            }
+                            // Update achievements cache
+                            self.achievements_cache.insert(appid, achievements);
+                            // Track this game for flash animation
+                            self.updated_games.insert(appid, std::time::Instant::now());
+                            // Re-sort to place updated row in correct position
+                            self.sort_games();
+                            self.single_game_refreshing = None;
+                            self.status = "Refresh complete!".to_string();
+                            self.state = AppState::Idle;
+                            return;
+                        }
+                        crate::steam_api::SingleGameRefreshProgress::Error(e) => {
+                            self.single_game_refreshing = None;
+                            self.status = format!("Refresh error: {}", e);
+                            self.state = AppState::Idle;
+                            return;
+                        }
+                    }
+                }
+                self.receiver = Some(ProgressReceiver::SingleGameRefresh(rx));
             }
         }
     }
@@ -294,6 +354,32 @@ impl SteamOverachieverApp {
         self.updated_games.retain(|_, update_time| {
             update_time.elapsed().as_secs_f32() < FLASH_DURATION
         });
+    }
+    
+    /// Clean up expired game launch cooldowns (7 seconds)
+    pub(crate) fn cleanup_expired_launch_cooldowns(&mut self) {
+        const LAUNCH_COOLDOWN_SECS: f32 = 7.0;
+        self.game_launch_times.retain(|_, launch_time| {
+            launch_time.elapsed().as_secs_f32() < LAUNCH_COOLDOWN_SECS
+        });
+    }
+    
+    /// Check if a game is in launch cooldown (returns remaining fraction 0.0-1.0)
+    pub(crate) fn get_launch_cooldown(&self, appid: u64) -> Option<f32> {
+        const LAUNCH_COOLDOWN_SECS: f32 = 7.0;
+        self.game_launch_times.get(&appid).and_then(|launch_time| {
+            let elapsed = launch_time.elapsed().as_secs_f32();
+            if elapsed < LAUNCH_COOLDOWN_SECS {
+                Some(1.0 - (elapsed / LAUNCH_COOLDOWN_SECS))
+            } else {
+                None
+            }
+        })
+    }
+    
+    /// Refresh the list of installed Steam games
+    pub(crate) fn refresh_installed_games(&mut self) {
+        self.installed_games = crate::steam_library::get_installed_games();
     }
     
     /// Calculate and save achievement statistics to history
@@ -418,6 +504,11 @@ impl SteamOverachieverApp {
             match receiver.try_recv() {
                 Ok(Ok(result)) => {
                     match result {
+                        CloudOpResult::UploadProgress(progress) => {
+                            // Update progress state, don't clear receiver - more messages coming
+                            self.cloud_sync_state = CloudSyncState::Uploading(progress);
+                            return;
+                        }
                         CloudOpResult::UploadSuccess => {
                             self.cloud_sync_state = CloudSyncState::Success("Data uploaded successfully!".to_string());
                             // Start async status refresh
@@ -534,7 +625,7 @@ impl SteamOverachieverApp {
         
         let steam_id = self.config.steam_id.clone();
         
-        self.cloud_sync_state = CloudSyncState::Uploading;
+        self.cloud_sync_state = CloudSyncState::Uploading(crate::cloud_sync::UploadProgress::default());
         
         // Gather data from local database (this is fast, so we do it synchronously)
         let conn = match open_connection() {

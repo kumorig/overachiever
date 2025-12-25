@@ -25,6 +25,11 @@ urlencoding = "2.1"
 egui-phosphor = "0.11.0"
 toml = "0.9"
 open = "5"
+jsonwebtoken = "9"
+base64 = "0.22"
+
+# Windows registry for Steam path detection
+winreg = "0.55"
 
 # WebSocket client for hybrid/remote modes
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }

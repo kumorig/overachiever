@@ -56,16 +56,24 @@ fn star_rating_widget(ui: &mut Ui, current_rating: Option<u8>) -> Option<u8> {
     let flame_color = Color32::from_rgb(255, 100, 0); // Orange-red for flames
     let mut clicked_rating: Option<u8> = None;
     
-    // Calculate hover state for all flames
-    let start_pos = ui.cursor().min;
+    // Calculate total width needed
     let total_width = 5.0 * STAR_SIZE + 4.0 * STAR_SPACING;
-    let rating_rect = egui::Rect::from_min_size(start_pos, egui::vec2(total_width, STAR_SIZE));
     
-    // Sense for the whole rating area
-    let response = ui.allocate_rect(rating_rect, Sense::click());
+    // Get the row height from surrounding text to center vertically
+    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+    let widget_height = STAR_SIZE.max(row_height);
+    
+    // Allocate space and get the actual rect (this ensures proper vertical centering in horizontal layouts)
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(total_width, widget_height), Sense::click());
+    
+    // Calculate vertical center of the allocated rect
+    let center_y = rect.center().y;
+    
+    // Calculate hover state for all flames
+    let start_x = rect.min.x;
     let hover_flame = if response.hovered() {
         if let Some(pos) = response.hover_pos() {
-            let rel_x = pos.x - start_pos.x;
+            let rel_x = pos.x - start_x;
             Some(((rel_x / (STAR_SIZE + STAR_SPACING)).floor() as u8).min(4) + 1)
         } else {
             None
@@ -78,8 +86,8 @@ fn star_rating_widget(ui: &mut Ui, current_rating: Option<u8>) -> Option<u8> {
     let painter = ui.painter();
     for i in 0..5u8 {
         let flame_num = i + 1;
-        let x = start_pos.x + i as f32 * (STAR_SIZE + STAR_SPACING);
-        let center = egui::pos2(x + STAR_SIZE / 2.0, start_pos.y + STAR_SIZE / 2.0);
+        let x = start_x + i as f32 * (STAR_SIZE + STAR_SPACING);
+        let center = egui::pos2(x + STAR_SIZE / 2.0, center_y);
         
         // Determine flame color: hover > current rating > empty
         let is_filled = current_rating.map(|r| flame_num <= r).unwrap_or(false);
@@ -107,20 +115,14 @@ fn star_rating_widget(ui: &mut Ui, current_rating: Option<u8>) -> Option<u8> {
         );
     }
     
-    // Show difficulty label after the flames
-    let label_x = start_pos.x + total_width + 6.0;
-    let label_center = egui::pos2(label_x, start_pos.y + STAR_SIZE / 2.0);
+    // Show difficulty label after the flames (outside the allocated rect, so allocate more space)
     let display_rating = hover_flame.or(current_rating);
     if let Some(rating) = display_rating {
         let label = difficulty_label(rating);
         let label_color = difficulty_color(rating);
-        painter.text(
-            label_center,
-            egui::Align2::LEFT_CENTER,
-            label,
-            egui::FontId::proportional(11.0),
-            label_color,
-        );
+        
+        // Add the label as a regular UI element so it flows properly
+        ui.label(RichText::new(label).color(label_color).size(11.0));
     }
     
     // Handle click
@@ -165,16 +167,12 @@ pub fn render_log<P: StatsPanelPlatform>(ui: &mut Ui, platform: &mut P) {
         return;
     }
     
-    for (i, entry) in log_entries.iter().enumerate() {
-        // Alternating background
-        let row_rect = ui.available_rect_before_wrap();
-        let row_rect = egui::Rect::from_min_size(
-            row_rect.min,
-            egui::vec2(row_rect.width(), 24.0)
-        );
-        if i % 2 == 1 {
-            ui.painter().rect_filled(row_rect, 2.0, alt_bg);
-        }
+    // Track positions for alternating backgrounds
+    let mut row_tops: Vec<f32> = Vec::with_capacity(log_entries.len() + 1);
+    
+    for (_, entry) in log_entries.iter().enumerate() {
+        // Record the top of this row
+        row_tops.push(ui.cursor().min.y);
         
         match entry {
             LogEntry::Achievement { appid, apiname, game_name, achievement_name, timestamp, achievement_icon, game_icon_url } => {
@@ -281,6 +279,20 @@ pub fn render_log<P: StatsPanelPlatform>(ui: &mut Ui, platform: &mut P) {
                 });
             }
         }
+    }
+    
+    // Record final position and draw alternating backgrounds
+    row_tops.push(ui.cursor().min.y);
+    
+    for i in (1..row_tops.len()).step_by(2) {
+        // Draw stripe for odd rows (0-indexed, so rows 1, 3, 5...)
+        let top = row_tops[i];
+        let bottom = row_tops.get(i + 1).copied().unwrap_or(top + 24.0);
+        let row_rect = egui::Rect::from_min_max(
+            egui::pos2(ui.min_rect().left(), top),
+            egui::pos2(ui.min_rect().right(), bottom)
+        );
+        ui.painter().rect_filled(row_rect, 2.0, alt_bg);
     }
 }
 

@@ -136,6 +136,40 @@ pub trait GamesTablePlatform: StatsPanelPlatform {
     
     /// Mark that we've scrolled to the target (call after scrolling)
     fn mark_scrolled_to_target(&mut self) {}
+    
+    /// Check if this platform supports refreshing a single game
+    fn can_refresh_single_game(&self) -> bool { false }
+    
+    /// Request a refresh of achievements for a single game
+    /// Returns true if the request was initiated, false if not supported or busy
+    fn request_single_game_refresh(&mut self, _appid: u64) -> bool { false }
+    
+    /// Check if a single game refresh is in progress
+    fn is_single_game_refreshing(&self, _appid: u64) -> bool { false }
+    
+    /// Check if this platform supports launching a Steam game
+    fn can_launch_game(&self) -> bool { false }
+    
+    /// Launch a Steam game by appid
+    fn launch_game(&mut self, _appid: u64) {}
+    
+    /// Check if a game is in launch cooldown (returns intensity 0.0-1.0, or None if not launching)
+    fn get_launch_cooldown(&self, _appid: u64) -> Option<f32> { None }
+    
+    /// Check if this platform can detect installed games (desktop only)
+    fn can_detect_installed(&self) -> bool { false }
+    
+    /// Check if a game is installed locally
+    fn is_game_installed(&self, _appid: u64) -> bool { false }
+    
+    /// Install a Steam game by appid (opens Steam install dialog)
+    fn install_game(&self, _appid: u64) {}
+    
+    /// Get installed games filter state
+    fn filter_installed(&self) -> TriFilter { TriFilter::All }
+    
+    /// Set installed games filter state
+    fn set_filter_installed(&mut self, _filter: TriFilter) {}
 }
 
 // ============================================================================
@@ -185,6 +219,15 @@ pub fn get_filtered_indices(platform: &impl GamesTablePlatform) -> Vec<usize> {
                 TriFilter::All => {}
                 TriFilter::With => if !has_playtime { return false; }
                 TriFilter::Without => if has_playtime { return false; }
+            }
+            // Installed filter (desktop only - if platform can detect installed games)
+            if platform.can_detect_installed() {
+                let is_installed = platform.is_game_installed(g.appid);
+                match platform.filter_installed() {
+                    TriFilter::All => {}
+                    TriFilter::With => if !is_installed { return false; }
+                    TriFilter::Without => if is_installed { return false; }
+                }
             }
             true
         })
@@ -263,10 +306,20 @@ pub fn render_filter_bar<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P) {
             platform.set_filter_playtime(next);
         }
         
+        // Installed filter - only show on desktop (platform that can detect installed games)
+        if platform.can_detect_installed() {
+            let inst_label = format!("Installed: {}", platform.filter_installed().label("Yes", "No"));
+            if ui.button(&inst_label).clicked() {
+                let next = platform.filter_installed().cycle();
+                platform.set_filter_installed(next);
+            }
+        }
+        
         // Clear filters button
         let has_filters = !platform.filter_name().is_empty() 
             || platform.filter_achievements() != TriFilter::All 
-            || platform.filter_playtime() != TriFilter::All;
+            || platform.filter_playtime() != TriFilter::All
+            || (platform.can_detect_installed() && platform.filter_installed() != TriFilter::All);
         
         if !has_filters {
             ui.add_enabled(false, egui::Button::new("Clear"));
@@ -274,6 +327,9 @@ pub fn render_filter_bar<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P) {
             platform.set_filter_name(String::new());
             platform.set_filter_achievements(TriFilter::All);
             platform.set_filter_playtime(TriFilter::All);
+            if platform.can_detect_installed() {
+                platform.set_filter_installed(TriFilter::All);
+            }
         }
     });
 }
@@ -429,6 +485,63 @@ pub fn render_games_table<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P, 
                                     }
                                 }
                                 ui.label(RichText::new(&game.name).strong());
+                                
+                                // Right-align the action buttons
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    // Refresh button for single game update
+                                    if platform.can_refresh_single_game() {
+                                        let is_refreshing = platform.is_single_game_refreshing(appid);
+                                        let btn = ui.add_enabled(
+                                            !is_refreshing,
+                                            egui::Button::new(regular::ARROWS_CLOCKWISE.to_string()).small()
+                                        );
+                                        if btn.clicked() {
+                                            platform.request_single_game_refresh(appid);
+                                        }
+                                        super::instant_tooltip(&btn, "Refresh achievements for this game");
+                                    }
+                                    
+                                    // Launch/Install button (desktop only)
+                                    if platform.can_launch_game() {
+                                        let is_installed = !platform.can_detect_installed() || platform.is_game_installed(appid);
+                                        
+                                        if is_installed {
+                                            // Play button for installed games
+                                            let cooldown = platform.get_launch_cooldown(appid);
+                                            let is_launching = cooldown.is_some();
+                                            
+                                            // Highlight color when launching (green fading to normal)
+                                            let btn = if let Some(intensity) = cooldown {
+                                                let green = Color32::from_rgb(50, 180, 80);
+                                                let normal = ui.visuals().widgets.inactive.weak_bg_fill;
+                                                let color = Color32::from_rgb(
+                                                    (normal.r() as f32 + (green.r() as f32 - normal.r() as f32) * intensity) as u8,
+                                                    (normal.g() as f32 + (green.g() as f32 - normal.g() as f32) * intensity) as u8,
+                                                    (normal.b() as f32 + (green.b() as f32 - normal.b() as f32) * intensity) as u8,
+                                                );
+                                                ui.add_enabled(
+                                                    false,
+                                                    egui::Button::new(regular::PLAY.to_string()).small().fill(color)
+                                                )
+                                            } else {
+                                                ui.add(egui::Button::new(regular::PLAY.to_string()).small())
+                                            };
+                                            
+                                            if btn.clicked() && !is_launching {
+                                                platform.launch_game(appid);
+                                            }
+                                            let tooltip = if is_launching { "Launching..." } else { "Launch game in Steam" };
+                                            super::instant_tooltip(&btn, tooltip);
+                                        } else {
+                                            // Install button for non-installed games
+                                            let btn = ui.add(egui::Button::new(regular::DOWNLOAD_SIMPLE.to_string()).small());
+                                            if btn.clicked() {
+                                                platform.install_game(appid);
+                                            }
+                                            super::instant_tooltip(&btn, "Install game from Steam");
+                                        }
+                                    }
+                                });
                             } else {
                                 ui.label(&game.name);
                             }

@@ -43,7 +43,7 @@ pub async fn fetch_owned_games(
 pub async fn fetch_recently_played(
     steam_key: &str,
     steam_id: u64,
-) -> Result<Vec<u64>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<SteamGame>, Box<dyn std::error::Error + Send + Sync>> {
     let input = serde_json::json!({
         "steamid": steam_id,
         "count": 0
@@ -60,16 +60,17 @@ pub async fn fetch_recently_played(
     let response = client.get(&url).send().await?;
     let body: serde_json::Value = response.json().await?;
     
-    let appids: Vec<u64> = body["response"]["games"]
+    // Parse full game info (the API returns name, icon, playtime)
+    let games: Vec<SteamGame> = body["response"]["games"]
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|g| g["appid"].as_u64())
+                .filter_map(|g| serde_json::from_value(g.clone()).ok())
                 .collect()
         })
         .unwrap_or_default();
     
-    Ok(appids)
+    Ok(games)
 }
 
 pub async fn fetch_achievements(

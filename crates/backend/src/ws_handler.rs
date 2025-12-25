@@ -59,6 +59,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 steam_id: claims.steam_id,
                                 display_name: claims.display_name,
                                 avatar_url: claims.avatar_url,
+                                short_id: claims.short_id,
                             }
                         }
                     }
@@ -177,13 +178,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         }
                         
                         // Step 2: Fetch recently played games
-                        let recent_appids = crate::steam_api::fetch_recently_played(api_key, steam_id_u64)
+                        let recent_games = crate::steam_api::fetch_recently_played(api_key, steam_id_u64)
                             .await
                             .unwrap_or_default();
                         
-                        tracing::info!("Found {} recently played games for user {}", recent_appids.len(), steam_id);
+                        tracing::info!("Found {} recently played games for user {}", recent_games.len(), steam_id);
                         
-                        if recent_appids.is_empty() {
+                        if recent_games.is_empty() {
                             // No recently played games, return sync complete with just the games
                             match crate::db::get_user_games(&state.db_pool, steam_id).await {
                                 Ok(user_games) => {
@@ -197,6 +198,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 Err(e) => ServerMessage::Error { message: format!("Failed to fetch games: {:?}", e) }
                             }
                         } else {
+                            // Upsert recently played games (in case any are missing from owned games)
+                            if let Err(e) = crate::db::upsert_games(&state.db_pool, steam_id, &recent_games).await {
+                                tracing::warn!("Failed to upsert recently played games: {:?}", e);
+                            }
+                            
+                            // Recalculate total games after adding recently played (some F2P games might not be in GetOwnedGames)
+                            if let Ok(all_games_after) = crate::db::get_user_games(&state.db_pool, steam_id).await {
+                                let new_total = all_games_after.len() as i32;
+                                if new_total > game_count {
+                                    if let Err(e) = crate::db::update_run_history_total(&state.db_pool, steam_id, new_total).await {
+                                        tracing::warn!("Failed to update run_history total: {:?}", e);
+                                    }
+                                }
+                            }
+                            
+                            // Get appids for filtering
+                            let recent_appids: Vec<u64> = recent_games.iter().map(|g| g.appid).collect();
+                            
                             // Step 3: Scrape achievements for recently played games
                             let all_games = match crate::db::get_user_games(&state.db_pool, steam_id).await {
                                 Ok(g) => g,
@@ -423,6 +442,53 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         run_history,
                         achievement_history,
                         log_entries,
+                    }
+                } else {
+                    ServerMessage::AuthError { reason: "Not authenticated".to_string() }
+                }
+            }
+            
+            ClientMessage::RefreshSingleGame { appid } => {
+                if let Some(ref steam_id) = authenticated_steam_id {
+                    if let Some(ref api_key) = state.steam_api_key {
+                        tracing::info!("Refreshing single game {} for user {}", appid, steam_id);
+                        let steam_id_u64: u64 = steam_id.parse().unwrap_or(0);
+                        
+                        // Fetch achievements and schema
+                        let achievements = crate::steam_api::fetch_achievements(api_key, steam_id_u64, appid).await.unwrap_or_default();
+                        let schema = crate::steam_api::fetch_achievement_schema(api_key, appid).await.unwrap_or_default();
+                        
+                        // Store schema
+                        for s in &schema {
+                            let _ = crate::db::upsert_achievement_schema(&state.db_pool, appid, s).await;
+                        }
+                        
+                        // Store achievements and count
+                        let ach_total = achievements.len() as i32;
+                        let mut ach_unlocked = 0i32;
+                        
+                        for ach in &achievements {
+                            let _ = crate::db::upsert_user_achievement(&state.db_pool, steam_id, appid, ach).await;
+                            if ach.achieved == 1 {
+                                ach_unlocked += 1;
+                            }
+                        }
+                        
+                        // Update game achievement counts
+                        let _ = crate::db::update_game_achievements(&state.db_pool, steam_id, appid, ach_total, ach_unlocked).await;
+                        
+                        // Get the updated game and achievements
+                        let user_games = crate::db::get_user_games(&state.db_pool, steam_id).await.unwrap_or_default();
+                        let game = user_games.into_iter().find(|g| g.appid == appid);
+                        let game_achievements = crate::db::get_game_achievements(&state.db_pool, steam_id, appid).await.unwrap_or_default();
+                        
+                        if let Some(game) = game {
+                            ServerMessage::SingleGameRefreshComplete { appid, game, achievements: game_achievements }
+                        } else {
+                            ServerMessage::Error { message: "Game not found after refresh".to_string() }
+                        }
+                    } else {
+                        ServerMessage::Error { message: "Steam API key not configured on server".to_string() }
                     }
                 } else {
                     ServerMessage::AuthError { reason: "Not authenticated".to_string() }

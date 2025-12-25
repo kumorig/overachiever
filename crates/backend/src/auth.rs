@@ -14,6 +14,8 @@ pub struct Claims {
     pub steam_id: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
+    /// Short ID for shareable profile URLs
+    pub short_id: Option<String>,
     pub exp: usize,
 }
 
@@ -77,17 +79,20 @@ pub async fn steam_callback(
     
     let display_name = format!("User {}", &steam_id[..8.min(steam_id.len())]);
     
-    // Create/update user in database
-    if let Err(e) = crate::db::get_or_create_user(&state.db_pool, &steam_id, &display_name, None).await {
-        tracing::error!("Failed to create user {}: {:?}", steam_id, e);
-        let error_str = format!("{:?}", e);
-        let error_msg = urlencoding::encode(&error_str);
-        if let Some(redirect_uri) = params.redirect_uri {
-            return Redirect::temporary(&format!("{}?error=db_error&details={}", redirect_uri, error_msg));
+    // Create/update user in database and get short_id
+    let short_id = match crate::db::get_or_create_user(&state.db_pool, &steam_id, &display_name, None).await {
+        Ok(short_id) => short_id,
+        Err(e) => {
+            tracing::error!("Failed to create user {}: {:?}", steam_id, e);
+            let error_str = format!("{:?}", e);
+            let error_msg = urlencoding::encode(&error_str);
+            if let Some(redirect_uri) = params.redirect_uri {
+                return Redirect::temporary(&format!("{}?error=db_error&details={}", redirect_uri, error_msg));
+            }
+            return Redirect::temporary(&format!("/?error=db_error&details={}", error_msg));
         }
-        return Redirect::temporary(&format!("/?error=db_error&details={}", error_msg));
-    }
-    tracing::info!("User {} created/updated successfully", steam_id);
+    };
+    tracing::info!("User {} created/updated successfully with short_id {}", steam_id, short_id);
     
     // Create JWT token (30 days for desktop, 7 days for web)
     let expiry_days = if params.redirect_uri.is_some() { 30 } else { 7 };
@@ -95,6 +100,7 @@ pub async fn steam_callback(
         steam_id: steam_id.clone(),
         display_name,
         avatar_url: None,
+        short_id: Some(short_id),
         exp: (chrono::Utc::now() + chrono::Duration::days(expiry_days)).timestamp() as usize,
     };
     

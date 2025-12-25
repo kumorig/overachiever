@@ -111,6 +111,20 @@ impl WasmApp {
                                 clear_gdpr_consent_from_storage();
                             }
                         }
+                        
+                        // User profile button - show shareable link
+                        if let ConnectionState::Authenticated(ref user) = self.connection_state {
+                            if let Some(ref short_id) = user.short_id {
+                                let profile_url = format!("https://overachiever.space/{}", short_id);
+                                if ui.button(format!("{}", regular::USER))
+                                    .on_hover_text_at_pointer(format!("Copy profile link: {}", profile_url))
+                                    .clicked() 
+                                {
+                                    // Copy to clipboard
+                                    ui.ctx().copy_text(profile_url);
+                                }
+                            }
+                        }
                     }
                 });
             });

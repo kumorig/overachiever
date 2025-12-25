@@ -22,6 +22,9 @@ pub enum ClientMessage {
     /// Request full achievement scan (scrape all games)
     FullScan { force: bool },
     
+    /// Refresh achievements for a single game
+    RefreshSingleGame { appid: u64 },
+    
     /// Request history data
     FetchHistory,
     
@@ -126,6 +129,13 @@ pub enum ServerMessage {
     
     /// Achievement comment submitted successfully
     AchievementCommentSubmitted { count: usize },
+    
+    /// Single game refresh completed
+    SingleGameRefreshComplete {
+        appid: u64,
+        game: Game,
+        achievements: Vec<GameAchievement>,
+    },
     
     /// History data
     History {

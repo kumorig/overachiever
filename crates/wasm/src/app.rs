@@ -99,6 +99,9 @@ pub struct WasmApp {
     
     // Last clicked achievement in log panel (for persistent highlight)
     pub(crate) log_selected_achievement: Option<(u64, String)>, // (appid, apiname)
+    
+    // Single game refresh state: appid of game being refreshed
+    pub(crate) single_game_refreshing: Option<u64>,
 }
 
 impl WasmApp {
@@ -153,6 +156,7 @@ impl WasmApp {
             navigation_target: None,
             needs_scroll_to_target: false,
             log_selected_achievement: None,
+            single_game_refreshing: None,
         };
         
         // Fetch build info asynchronously
@@ -348,6 +352,19 @@ impl WasmApp {
                     if let Some(client) = &self.ws_client {
                         client.fetch_history();
                     }
+                }
+                overachiever_core::ServerMessage::SingleGameRefreshComplete { appid, game, achievements } => {
+                    // Update the game in our list
+                    if let Some(g) = self.games.iter_mut().find(|g| g.appid == appid) {
+                        *g = game;
+                    }
+                    // Update achievements cache
+                    self.achievements_cache.insert(appid, achievements);
+                    // Clear the refresh state
+                    self.single_game_refreshing = None;
+                    self.status = "Refresh complete!".to_string();
+                    // Re-sort games
+                    sort_games(&mut self.games, self.sort_column, self.sort_order);
                 }
                 overachiever_core::ServerMessage::History { run_history, achievement_history, log_entries } => {
                     web_sys::console::log_1(&format!("Received History: {} run_history, {} achievement_history, {} log_entries", 

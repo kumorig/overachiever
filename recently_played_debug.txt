@@ -1,0 +1,197 @@
+=== Recently Played API Debug ===
+Timestamp: 2025-12-25 09:51:43
+Steam ID: 76561197975373553
+API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
+
+=== Raw Response ===
+{
+  "response": {
+    "games": [
+      {
+        "appid": 1197260,
+        "img_icon_url": "3d690572671758c1a506c9d4f1bc6176d6569af6",
+        "name": "The Perfect Tower II",
+        "playtime_2weeks": 2699,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 16922,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 16922
+      },
+      {
+        "appid": 2181940,
+        "img_icon_url": "930a39c2da5aeb4602df4be95749c6308bcbfd05",
+        "name": "CivIdle",
+        "playtime_2weeks": 1944,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 2187,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 2187
+      },
+      {
+        "appid": 1318690,
+        "img_icon_url": "974fc8a55e4191dfb390f59a24cb2f1900393533",
+        "name": "shapez",
+        "playtime_2weeks": 1558,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 3667,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 3667
+      },
+      {
+        "appid": 2694490,
+        "img_icon_url": "fa8ff2005f65d0cbc7403a5b18ca77c0bbc9d05a",
+        "name": "Path of Exile 2",
+        "playtime_2weeks": 843,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 24987,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 24987
+      },
+      {
+        "appid": 3330280,
+        "img_icon_url": "34b320b7389db1ad1e964cb5a6bf99bbe7c4a1fc",
+        "name": "Free Solitaire",
+        "playtime_2weeks": 711,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 711,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 711
+      },
+      {
+        "appid": 2225960,
+        "img_icon_url": "f217e83bf2068cf5b9edef3008db2ce588f1dc19",
+        "name": "Noobs Are Coming",
+        "playtime_2weeks": 484,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 484,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 484
+      },
+      {
+        "appid": 2820820,
+        "img_icon_url": "4284a0918a75873e83b52089b12534967f60cbe6",
+        "name": "Jotunnslayer: Hordes of Hel",
+        "playtime_2weeks": 279,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 1110,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 1110
+      },
+      {
+        "appid": 3444020,
+        "img_icon_url": "313c4fe53c583a3b633b555b94d5cf5c77a1bbd0",
+        "name": "我在地府打麻将",
+        "playtime_2weeks": 55,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 55,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 55
+      },
+      {
+        "appid": 1434540,
+        "img_icon_url": "2674d45b0f6f7f8c3db016c6078bbb9c99e4f033",
+        "name": "Zoeti",
+        "playtime_2weeks": 43,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 43,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 43
+      },
+      {
+        "appid": 896440,
+        "img_icon_url": "698eb339f48ab0949d566056790bfe5e53f0de1b",
+        "name": "Eternal Edge",
+        "playtime_2weeks": 20,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 20,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 20
+      },
+      {
+        "appid": 1428100,
+        "img_icon_url": "241fe1368e67309c721c44f0f23a6964c8d1d946",
+        "name": "Instruments of Destruction",
+        "playtime_2weeks": 18,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 18,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 18
+      },
+      {
+        "appid": 1306630,
+        "img_icon_url": "a8659c31338c183bde406c0bd6d00f55bbab4b6e",
+        "name": "Lost Ruins",
+        "playtime_2weeks": 17,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 17,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 17
+      },
+      {
+        "appid": 2545740,
+        "img_icon_url": "3ba51f6e703e463dbd13f76007d47b748a7323b5",
+        "name": "Hive Jump 2: Survivors",
+        "playtime_2weeks": 4,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 4,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 4
+      },
+      {
+        "appid": 427520,
+        "img_icon_url": "267f5a89f36ab287e600a4e7d4e73d3d11f0fd7d",
+        "name": "Factorio",
+        "playtime_2weeks": 4,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 10961,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 4
+      },
+      {
+        "appid": 1511460,
+        "img_icon_url": "ce2346290b51c192ab237fd83ffb68309759c746",
+        "name": "InfraSpace",
+        "playtime_2weeks": 1,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 47,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 47
+      }
+    ],
+    "total_count": 15
+  }
+}
+
+=== Games List ===
+Total games in response: 15
+
+1. The Perfect Tower II (appid: 1197260) - 2 weeks: 2699 min, total: 16922 min
+2. CivIdle (appid: 2181940) - 2 weeks: 1944 min, total: 2187 min
+3. shapez (appid: 1318690) - 2 weeks: 1558 min, total: 3667 min
+4. Path of Exile 2 (appid: 2694490) - 2 weeks: 843 min, total: 24987 min
+5. Free Solitaire (appid: 3330280) - 2 weeks: 711 min, total: 711 min
+6. Noobs Are Coming (appid: 2225960) - 2 weeks: 484 min, total: 484 min
+7. Jotunnslayer: Hordes of Hel (appid: 2820820) - 2 weeks: 279 min, total: 1110 min
+8. 我在地府打麻将 (appid: 3444020) - 2 weeks: 55 min, total: 55 min
+9. Zoeti (appid: 1434540) - 2 weeks: 43 min, total: 43 min
+10. Eternal Edge (appid: 896440) - 2 weeks: 20 min, total: 20 min
+11. Instruments of Destruction (appid: 1428100) - 2 weeks: 18 min, total: 18 min
+12. Lost Ruins (appid: 1306630) - 2 weeks: 17 min, total: 17 min
+13. Hive Jump 2: Survivors (appid: 2545740) - 2 weeks: 4 min, total: 4 min
+14. Factorio (appid: 427520) - 2 weeks: 4 min, total: 10961 min
+15. InfraSpace (appid: 1511460) - 2 weeks: 1 min, total: 47 min

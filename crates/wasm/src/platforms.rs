@@ -7,7 +7,7 @@ use overachiever_core::{
     sort_games,
 };
 
-use crate::app::WasmApp;
+use crate::app::{WasmApp, ConnectionState, AppState};
 use crate::steam_images::{game_icon_url, proxy_steam_image_url};
 
 // ============================================================================
@@ -213,5 +213,29 @@ impl GamesTablePlatform for WasmApp {
     
     fn mark_scrolled_to_target(&mut self) {
         self.needs_scroll_to_target = false;
+    }
+    
+    fn can_refresh_single_game(&self) -> bool {
+        // WASM can refresh if authenticated and not busy
+        matches!(self.connection_state, ConnectionState::Authenticated(_)) 
+            && self.app_state == AppState::Idle
+    }
+    
+    fn request_single_game_refresh(&mut self, appid: u64) -> bool {
+        if !self.can_refresh_single_game() || self.single_game_refreshing.is_some() {
+            return false;
+        }
+        if let Some(client) = &self.ws_client {
+            self.single_game_refreshing = Some(appid);
+            self.status = format!("Refreshing game {}...", appid);
+            client.refresh_single_game(appid);
+            true
+        } else {
+            false
+        }
+    }
+    
+    fn is_single_game_refreshing(&self, appid: u64) -> bool {
+        self.single_game_refreshing == Some(appid)
     }
 }

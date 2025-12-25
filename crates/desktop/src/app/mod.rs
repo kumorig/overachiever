@@ -6,6 +6,7 @@ mod panels;
 use crate::config::Config;
 use crate::db::{get_all_games, get_run_history, get_achievement_history, get_log_entries, open_connection, get_last_update, finalize_migration, ensure_user, get_all_achievement_ratings};
 use crate::icon_cache::IconCache;
+use crate::steam_library::get_installed_games;
 use crate::ui::{AppState, SortColumn, SortOrder, TriFilter, ProgressReceiver};
 use crate::cloud_sync::{CloudSyncState, AuthResult, CloudOpResult};
 use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel, CloudSyncStatus};
@@ -71,6 +72,14 @@ pub struct SteamOverachieverApp {
     pub(crate) needs_scroll_to_target: bool,
     // Last clicked achievement in the log panel (for persistent highlight)
     pub(crate) log_selected_achievement: Option<(u64, String)>, // (appid, apiname)
+    // Single game refresh state: appid of game being refreshed
+    pub(crate) single_game_refreshing: Option<u64>,
+    // Track game launch times for cooldown (disable button for 7s)
+    pub(crate) game_launch_times: HashMap<u64, Instant>,
+    // Installed games (detected from Steam library folders)
+    pub(crate) installed_games: HashSet<u64>,
+    // Filter for installed games
+    pub(crate) filter_installed: TriFilter,
 }
 
 /// Cloud action pending confirmation
@@ -132,6 +141,9 @@ impl SteamOverachieverApp {
                 .collect()
         };
         
+        // Detect installed Steam games
+        let installed_games = get_installed_games();
+        
         let mut app = Self {
             config,
             games,
@@ -168,6 +180,10 @@ impl SteamOverachieverApp {
             navigation_target: None,
             needs_scroll_to_target: false,
             log_selected_achievement: None,
+            single_game_refreshing: None,
+            game_launch_times: HashMap::new(),
+            installed_games,
+            filter_installed: TriFilter::All,
         };
         
         // Apply consistent sorting after loading from database
@@ -191,11 +207,15 @@ impl eframe::App for SteamOverachieverApp {
         let has_flashing = !self.updated_games.is_empty();
         let is_linking = self.auth_receiver.is_some();
         let is_cloud_op = self.cloud_op_receiver.is_some();
+        let has_launch_cooldowns = !self.game_launch_times.is_empty();
         
         // Request repaint while busy or while animations are active
-        if is_busy || has_flashing || is_linking || is_cloud_op {
+        if is_busy || has_flashing || is_linking || is_cloud_op || has_launch_cooldowns {
             ctx.request_repaint();
         }
+        
+        // Clean up expired launch cooldowns
+        self.cleanup_expired_launch_cooldowns();
         
         // Render panels
         self.render_top_panel(ctx);

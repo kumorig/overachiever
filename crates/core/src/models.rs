@@ -229,6 +229,8 @@ pub struct UserProfile {
     pub steam_id: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
+    /// Short ID for shareable profile URLs (YouTube-style)
+    pub short_id: Option<String>,
 }
 
 /// Sync result after updating from Steam

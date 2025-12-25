@@ -83,6 +83,17 @@ impl SteamOverachieverApp {
                             self.show_gdpr_dialog = true;
                         }
                     }
+                    
+                    // User profile button - show shareable link if cloud linked
+                    if let Some(short_id) = self.config.get_short_id() {
+                        let profile_url = format!("https://overachiever.space/{}", short_id);
+                        if ui.button(regular::USER)
+                            .on_hover_text_at_pointer(format!("Open profile: {}", profile_url))
+                            .clicked() 
+                        {
+                            let _ = open::that(&profile_url);
+                        }
+                    }
                 });
             });
         });
@@ -218,10 +229,25 @@ impl SteamOverachieverApp {
                                 ui.label("Checking...");
                             });
                         }
-                        CloudSyncState::Uploading => {
-                            ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label("Uploading...");
+                        CloudSyncState::Uploading(progress) => {
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    if progress.total_bytes > 0 {
+                                        let mb_total = progress.total_bytes as f64 / (1024.0 * 1024.0);
+                                        if progress.bytes_sent >= progress.total_bytes {
+                                            ui.label(format!("Uploaded {:.2} MB", mb_total));
+                                        } else {
+                                            ui.label(format!("Uploading {:.2} MB...", mb_total));
+                                        }
+                                    } else {
+                                        ui.label("Preparing upload...");
+                                    }
+                                });
+                                if progress.total_bytes > 0 {
+                                    let fraction = progress.bytes_sent as f32 / progress.total_bytes as f32;
+                                    ui.add(egui::ProgressBar::new(fraction).desired_width(200.0).animate(progress.bytes_sent < progress.total_bytes));
+                                }
                             });
                         }
                         CloudSyncState::Downloading => {
@@ -247,7 +273,7 @@ impl SteamOverachieverApp {
                     ui.add_space(8.0);
                     
                     // Buttons
-                    let is_busy = matches!(cloud_state, CloudSyncState::Checking | CloudSyncState::Uploading | CloudSyncState::Downloading | CloudSyncState::Deleting | CloudSyncState::Linking);
+                    let is_busy = matches!(cloud_state, CloudSyncState::Checking | CloudSyncState::Uploading(_) | CloudSyncState::Downloading | CloudSyncState::Deleting | CloudSyncState::Linking);
                     
                     let mut link_clicked = false;
                     let mut unlink_clicked = false;
@@ -293,6 +319,22 @@ impl SteamOverachieverApp {
                     }
                     if delete_clicked {
                         self.pending_cloud_action = Some(crate::app::CloudAction::Delete);
+                    }
+                    
+                    // Debug section
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+                    
+                    ui.heading(format!("{} Debug", regular::BUG));
+                    
+                    ui.add_space(8.0);
+                    
+                    if ui.checkbox(&mut self.config.debug_recently_played, "Log recently played response")
+                        .on_hover_text("When running Update, write the recently played API response to recently_played_debug.txt")
+                        .changed()
+                    {
+                        let _ = self.config.save();
                     }
                 });
             });

@@ -24,11 +24,20 @@ pub enum CloudSyncState {
     Linking,
     #[allow(dead_code)]
     Checking,
-    Uploading,
+    Uploading(UploadProgress),
     Downloading,
     Deleting,
     Success(String),
     Error(String),
+}
+
+/// Progress information for uploads
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct UploadProgress {
+    /// Bytes sent so far
+    pub bytes_sent: usize,
+    /// Total bytes to send
+    pub total_bytes: usize,
 }
 
 /// Result from the Steam login callback
@@ -43,6 +52,7 @@ pub struct AuthResult {
 #[derive(Debug, Clone)]
 pub enum CloudOpResult {
     UploadSuccess,
+    UploadProgress(UploadProgress),
     DownloadSuccess(CloudSyncData),
     DeleteSuccess,
     StatusChecked(CloudSyncStatus),
@@ -108,12 +118,12 @@ fn run_callback_server() -> Result<AuthResult, String> {
                 
                 // Send response to browser
                 let (status, body) = match &result {
-                    Ok(_) => ("200 OK", "<html><body><h1>✓ Linked to Cloud!</h1><p>You can close this window and return to Overachiever.</p><script>window.close()</script></body></html>"),
-                    Err(e) => ("400 Bad Request", &format!("<html><body><h1>✗ Login Failed</h1><p>{}</p></body></html>", e) as &str),
+                    Ok(_) => ("200 OK", "<html><head><meta charset=\"utf-8\"></head><body><h1>&#10003; Linked to Cloud!</h1><p>You can close this window and return to Overachiever.</p><script>window.close()</script></body></html>"),
+                    Err(e) => ("400 Bad Request", &format!("<html><head><meta charset=\"utf-8\"></head><body><h1>&#10007; Login Failed</h1><p>{}</p></body></html>", e) as &str),
                 };
                 
                 let response = format!(
-                    "HTTP/1.1 {}\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    "HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     status,
                     body.len(),
                     body
@@ -194,20 +204,34 @@ pub fn check_cloud_status(token: &str) -> Result<CloudSyncStatus, String> {
 }
 
 /// Upload all local data to cloud (overwrites existing)
-pub fn upload_to_cloud(token: &str, data: &CloudSyncData) -> Result<(), String> {
+/// The progress callback is called with (bytes_sent, total_bytes)
+pub fn upload_to_cloud<F>(token: &str, data: &CloudSyncData, progress_callback: F) -> Result<(), String> 
+where
+    F: Fn(usize, usize) + Send + 'static,
+{
     use std::error::Error;
     
     let url = format!("{}/api/sync/upload", DEFAULT_SERVER_URL);
+    
+    // Serialize data first to get total size
+    let json_bytes = serde_json::to_vec(data)
+        .map_err(|e| format!("Failed to serialize data: {}", e))?;
+    let total_bytes = json_bytes.len();
+    
+    // Report initial progress (0%)
+    progress_callback(0, total_bytes);
     
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120)) // 2 minute timeout for uploads
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     
+    // Use body directly instead of .json() to have serialization control
     let response = client
         .post(&url)
         .header("Authorization", format!("Bearer {}", token))
-        .json(data)
+        .header("Content-Type", "application/json")
+        .body(json_bytes)
         .send()
         .map_err(|e| {
             let mut msg = format!("Network error: {}", e);
@@ -219,6 +243,9 @@ pub fn upload_to_cloud(token: &str, data: &CloudSyncData) -> Result<(), String> 
             }
             msg
         })?;
+    
+    // Report completion (since blocking client doesn't give us streaming progress)
+    progress_callback(total_bytes, total_bytes);
     
     if !response.status().is_success() {
         let status = response.status();
@@ -274,12 +301,20 @@ pub fn delete_from_cloud(token: &str) -> Result<(), String> {
 // Async versions of cloud operations (run in background thread, don't block UI)
 // ============================================================================
 
-/// Start async upload operation
+/// Start async upload operation with progress reporting
 pub fn start_upload(token: String, data: CloudSyncData) -> mpsc::Receiver<Result<CloudOpResult, String>> {
     let (tx, rx) = mpsc::channel();
     
     thread::spawn(move || {
-        let result = upload_to_cloud(&token, &data)
+        let tx_progress = tx.clone();
+        let progress_callback = move |bytes_sent: usize, total_bytes: usize| {
+            let _ = tx_progress.send(Ok(CloudOpResult::UploadProgress(UploadProgress {
+                bytes_sent,
+                total_bytes,
+            })));
+        };
+        
+        let result = upload_to_cloud(&token, &data, progress_callback)
             .map(|_| CloudOpResult::UploadSuccess);
         let _ = tx.send(result);
     });
