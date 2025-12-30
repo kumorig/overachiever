@@ -613,6 +613,7 @@ impl SteamOverachieverApp {
     pub(crate) fn upload_to_cloud(&mut self) {
         use crate::cloud_sync::CloudSyncState;
         use crate::db::get_all_achievements_for_export;
+        use crate::steam_library::get_installed_games_with_sizes;
         use overachiever_core::CloudSyncData;
         
         let token = match &self.config.cloud_token {
@@ -653,8 +654,14 @@ impl SteamOverachieverApp {
             exported_at: chrono::Utc::now(),
         };
         
-        // Start async upload
-        self.cloud_op_receiver = Some(crate::cloud_sync::start_upload(token, data));
+        // Collect install sizes from ACF files (for community database)
+        let install_sizes: Vec<(u64, u64)> = get_installed_games_with_sizes()
+            .into_iter()
+            .filter_map(|info| info.size_on_disk.map(|size| (info.appid, size)))
+            .collect();
+        
+        // Start async upload (includes size submission)
+        self.cloud_op_receiver = Some(crate::cloud_sync::start_upload_with_sizes(token, data, install_sizes));
     }
     
     pub(crate) fn download_from_cloud(&mut self) {

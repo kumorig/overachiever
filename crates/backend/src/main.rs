@@ -92,6 +92,9 @@ async fn main() {
         .route("/api/sync/upload", post(routes::upload_sync_data)
             .layer(DefaultBodyLimit::max(routes::UPLOAD_BODY_LIMIT)))
         .route("/api/sync/data", delete(routes::delete_sync_data))
+        // Size on disk endpoints
+        .route("/size-on-disk", get(routes::get_size_on_disk))
+        .route("/api/size-on-disk", post(routes::submit_size_on_disk))
         // Auth
         .route("/auth/steam", get(auth::steam_login))
         .route("/auth/steam/callback", get(auth::steam_callback))

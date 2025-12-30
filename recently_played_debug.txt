@@ -1,5 +1,5 @@
 === Recently Played API Debug ===
-Timestamp: 2025-12-25 10:05:46
+Timestamp: 2025-12-30 18:48:30
 Steam ID: 76561197975373553
 API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
 
@@ -11,56 +11,23 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "appid": 1197260,
         "img_icon_url": "3d690572671758c1a506c9d4f1bc6176d6569af6",
         "name": "The Perfect Tower II",
-        "playtime_2weeks": 2699,
+        "playtime_2weeks": 4857,
         "playtime_deck_forever": 0,
-        "playtime_forever": 16922,
+        "playtime_forever": 19080,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 16922
-      },
-      {
-        "appid": 2181940,
-        "img_icon_url": "930a39c2da5aeb4602df4be95749c6308bcbfd05",
-        "name": "CivIdle",
-        "playtime_2weeks": 1944,
-        "playtime_deck_forever": 0,
-        "playtime_forever": 2187,
-        "playtime_linux_forever": 0,
-        "playtime_mac_forever": 0,
-        "playtime_windows_forever": 2187
+        "playtime_windows_forever": 19080
       },
       {
         "appid": 1318690,
         "img_icon_url": "974fc8a55e4191dfb390f59a24cb2f1900393533",
         "name": "shapez",
-        "playtime_2weeks": 1558,
+        "playtime_2weeks": 1114,
         "playtime_deck_forever": 0,
         "playtime_forever": 3667,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
         "playtime_windows_forever": 3667
-      },
-      {
-        "appid": 2694490,
-        "img_icon_url": "fa8ff2005f65d0cbc7403a5b18ca77c0bbc9d05a",
-        "name": "Path of Exile 2",
-        "playtime_2weeks": 843,
-        "playtime_deck_forever": 0,
-        "playtime_forever": 24987,
-        "playtime_linux_forever": 0,
-        "playtime_mac_forever": 0,
-        "playtime_windows_forever": 24987
-      },
-      {
-        "appid": 3330280,
-        "img_icon_url": "34b320b7389db1ad1e964cb5a6bf99bbe7c4a1fc",
-        "name": "Free Solitaire",
-        "playtime_2weeks": 711,
-        "playtime_deck_forever": 0,
-        "playtime_forever": 711,
-        "playtime_linux_forever": 0,
-        "playtime_mac_forever": 0,
-        "playtime_windows_forever": 711
       },
       {
         "appid": 2225960,
@@ -74,15 +41,48 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "playtime_windows_forever": 484
       },
       {
-        "appid": 2820820,
-        "img_icon_url": "4284a0918a75873e83b52089b12534967f60cbe6",
-        "name": "Jotunnslayer: Hordes of Hel",
-        "playtime_2weeks": 279,
+        "appid": 3330280,
+        "img_icon_url": "34b320b7389db1ad1e964cb5a6bf99bbe7c4a1fc",
+        "name": "Free Solitaire",
+        "playtime_2weeks": 284,
         "playtime_deck_forever": 0,
-        "playtime_forever": 1110,
+        "playtime_forever": 711,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 1110
+        "playtime_windows_forever": 711
+      },
+      {
+        "appid": 1037020,
+        "img_icon_url": "67eb67ba238ae0dcf4a8d03c18d3aef008e1b32a",
+        "name": "ScourgeBringer",
+        "playtime_2weeks": 230,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 230,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 230
+      },
+      {
+        "appid": 2694490,
+        "img_icon_url": "fa8ff2005f65d0cbc7403a5b18ca77c0bbc9d05a",
+        "name": "Path of Exile 2",
+        "playtime_2weeks": 125,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 24987,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 24987
+      },
+      {
+        "appid": 427520,
+        "img_icon_url": "267f5a89f36ab287e600a4e7d4e73d3d11f0fd7d",
+        "name": "Factorio",
+        "playtime_2weeks": 90,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 11047,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 90
       },
       {
         "appid": 3444020,
@@ -96,6 +96,17 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "playtime_windows_forever": 55
       },
       {
+        "appid": 732430,
+        "img_icon_url": "118693f05c0c0fc0f69d42e3fbb200a733516c3e",
+        "name": "Superflight",
+        "playtime_2weeks": 49,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 49,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 49
+      },
+      {
         "appid": 1434540,
         "img_icon_url": "2674d45b0f6f7f8c3db016c6078bbb9c99e4f033",
         "name": "Zoeti",
@@ -105,6 +116,17 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
         "playtime_windows_forever": 43
+      },
+      {
+        "appid": 206420,
+        "img_icon_url": "211c502e385781a17b4d02cad7a3ef53f09f1e91",
+        "name": "Saints Row IV",
+        "playtime_2weeks": 25,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 25,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 25
       },
       {
         "appid": 896440,
@@ -140,6 +162,17 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "playtime_windows_forever": 17
       },
       {
+        "appid": 1150530,
+        "img_icon_url": "0acf71d6e95b0a2b5a6f58d80ed4688978936c26",
+        "name": "Wizard with a Gun",
+        "playtime_2weeks": 10,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 10,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 10
+      },
+      {
         "appid": 2545740,
         "img_icon_url": "3ba51f6e703e463dbd13f76007d47b748a7323b5",
         "name": "Hive Jump 2: Survivors",
@@ -151,47 +184,38 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "playtime_windows_forever": 4
       },
       {
-        "appid": 427520,
-        "img_icon_url": "267f5a89f36ab287e600a4e7d4e73d3d11f0fd7d",
-        "name": "Factorio",
-        "playtime_2weeks": 4,
+        "appid": 1135810,
+        "img_icon_url": "391b79014ccae4c5af5b8cf3a533eca1f245403d",
+        "name": "Vault of the Void",
+        "playtime_2weeks": 3,
         "playtime_deck_forever": 0,
-        "playtime_forever": 10961,
+        "playtime_forever": 3,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 4
-      },
-      {
-        "appid": 1511460,
-        "img_icon_url": "ce2346290b51c192ab237fd83ffb68309759c746",
-        "name": "InfraSpace",
-        "playtime_2weeks": 1,
-        "playtime_deck_forever": 0,
-        "playtime_forever": 47,
-        "playtime_linux_forever": 0,
-        "playtime_mac_forever": 0,
-        "playtime_windows_forever": 47
+        "playtime_windows_forever": 3
       }
     ],
-    "total_count": 15
+    "total_count": 17
   }
 }
 
 === Games List ===
-Total games in response: 15
+Total games in response: 17
 
-1. The Perfect Tower II (appid: 1197260) - 2 weeks: 2699 min, total: 16922 min
-2. CivIdle (appid: 2181940) - 2 weeks: 1944 min, total: 2187 min
-3. shapez (appid: 1318690) - 2 weeks: 1558 min, total: 3667 min
-4. Path of Exile 2 (appid: 2694490) - 2 weeks: 843 min, total: 24987 min
-5. Free Solitaire (appid: 3330280) - 2 weeks: 711 min, total: 711 min
-6. Noobs Are Coming (appid: 2225960) - 2 weeks: 484 min, total: 484 min
-7. Jotunnslayer: Hordes of Hel (appid: 2820820) - 2 weeks: 279 min, total: 1110 min
+1. The Perfect Tower II (appid: 1197260) - 2 weeks: 4857 min, total: 19080 min
+2. shapez (appid: 1318690) - 2 weeks: 1114 min, total: 3667 min
+3. Noobs Are Coming (appid: 2225960) - 2 weeks: 484 min, total: 484 min
+4. Free Solitaire (appid: 3330280) - 2 weeks: 284 min, total: 711 min
+5. ScourgeBringer (appid: 1037020) - 2 weeks: 230 min, total: 230 min
+6. Path of Exile 2 (appid: 2694490) - 2 weeks: 125 min, total: 24987 min
+7. Factorio (appid: 427520) - 2 weeks: 90 min, total: 11047 min
 8. 我在地府打麻将 (appid: 3444020) - 2 weeks: 55 min, total: 55 min
-9. Zoeti (appid: 1434540) - 2 weeks: 43 min, total: 43 min
-10. Eternal Edge (appid: 896440) - 2 weeks: 20 min, total: 20 min
-11. Instruments of Destruction (appid: 1428100) - 2 weeks: 18 min, total: 18 min
-12. Lost Ruins (appid: 1306630) - 2 weeks: 17 min, total: 17 min
-13. Hive Jump 2: Survivors (appid: 2545740) - 2 weeks: 4 min, total: 4 min
-14. Factorio (appid: 427520) - 2 weeks: 4 min, total: 10961 min
-15. InfraSpace (appid: 1511460) - 2 weeks: 1 min, total: 47 min
+9. Superflight (appid: 732430) - 2 weeks: 49 min, total: 49 min
+10. Zoeti (appid: 1434540) - 2 weeks: 43 min, total: 43 min
+11. Saints Row IV (appid: 206420) - 2 weeks: 25 min, total: 25 min
+12. Eternal Edge (appid: 896440) - 2 weeks: 20 min, total: 20 min
+13. Instruments of Destruction (appid: 1428100) - 2 weeks: 18 min, total: 18 min
+14. Lost Ruins (appid: 1306630) - 2 weeks: 17 min, total: 17 min
+15. Wizard with a Gun (appid: 1150530) - 2 weeks: 10 min, total: 10 min
+16. Hive Jump 2: Survivors (appid: 2545740) - 2 weeks: 4 min, total: 4 min
+17. Vault of the Void (appid: 1135810) - 2 weeks: 3 min, total: 3 min

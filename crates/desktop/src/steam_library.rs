@@ -4,6 +4,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
+/// Information about an installed game from ACF manifest
+#[derive(Debug, Clone)]
+pub struct InstalledGameInfo {
+    pub appid: u64,
+    pub size_on_disk: Option<u64>,
+}
+
 /// Get the Steam installation path on Windows
 fn get_steam_path() -> Option<PathBuf> {
     // Try common Steam installation paths
@@ -80,6 +87,25 @@ fn get_library_folders(steam_path: &PathBuf) -> Vec<PathBuf> {
     folders
 }
 
+/// Parse an ACF file and extract SizeOnDisk value
+fn parse_acf_size_on_disk(content: &str) -> Option<u64> {
+    // ACF files are VDF format, look for "SizeOnDisk" key
+    // Format: "SizeOnDisk"		"1234567890"
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("\"SizeOnDisk\"") {
+            // Extract value between quotes after the key
+            let parts: Vec<&str> = line.split('"').collect();
+            if parts.len() >= 4 {
+                if let Ok(size) = parts[3].parse::<u64>() {
+                    return Some(size);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Scan a steamapps folder for installed game appids
 fn scan_steamapps_folder(folder: &PathBuf) -> HashSet<u64> {
     let mut installed = HashSet::new();
@@ -106,6 +132,41 @@ fn scan_steamapps_folder(folder: &PathBuf) -> HashSet<u64> {
     installed
 }
 
+/// Scan a steamapps folder for installed games with size info
+fn scan_steamapps_folder_with_sizes(folder: &PathBuf) -> Vec<InstalledGameInfo> {
+    let mut games = Vec::new();
+    
+    let steamapps = folder.join("steamapps");
+    if let Ok(entries) = fs::read_dir(&steamapps) {
+        for entry in entries.flatten() {
+            let filename = entry.file_name();
+            let filename_str = filename.to_string_lossy();
+            
+            // Look for appmanifest_*.acf files
+            if filename_str.starts_with("appmanifest_") && filename_str.ends_with(".acf") {
+                // Extract appid from filename: appmanifest_12345.acf
+                let appid_str = filename_str
+                    .trim_start_matches("appmanifest_")
+                    .trim_end_matches(".acf");
+                if let Ok(appid) = appid_str.parse::<u64>() {
+                    // Read and parse the ACF file
+                    let acf_path = entry.path();
+                    let size_on_disk = fs::read_to_string(&acf_path)
+                        .ok()
+                        .and_then(|content| parse_acf_size_on_disk(&content));
+                    
+                    games.push(InstalledGameInfo {
+                        appid,
+                        size_on_disk,
+                    });
+                }
+            }
+        }
+    }
+    
+    games
+}
+
 /// Get all installed Steam game appids
 pub fn get_installed_games() -> HashSet<u64> {
     let mut installed = HashSet::new();
@@ -120,5 +181,21 @@ pub fn get_installed_games() -> HashSet<u64> {
     }
     
     installed
+}
+
+/// Get all installed games with their size information
+pub fn get_installed_games_with_sizes() -> Vec<InstalledGameInfo> {
+    let mut games = Vec::new();
+    
+    if let Some(steam_path) = get_steam_path() {
+        let library_folders = get_library_folders(&steam_path);
+        
+        for folder in library_folders {
+            let folder_games = scan_steamapps_folder_with_sizes(&folder);
+            games.extend(folder_games);
+        }
+    }
+    
+    games
 }
 

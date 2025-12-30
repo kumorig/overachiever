@@ -302,7 +302,17 @@ pub fn delete_from_cloud(token: &str) -> Result<(), String> {
 // ============================================================================
 
 /// Start async upload operation with progress reporting
+#[allow(dead_code)]
 pub fn start_upload(token: String, data: CloudSyncData) -> mpsc::Receiver<Result<CloudOpResult, String>> {
+    start_upload_with_sizes(token, data, vec![])
+}
+
+/// Start async upload operation with progress reporting and install sizes
+pub fn start_upload_with_sizes(
+    token: String, 
+    data: CloudSyncData, 
+    install_sizes: Vec<(u64, u64)>
+) -> mpsc::Receiver<Result<CloudOpResult, String>> {
     let (tx, rx) = mpsc::channel();
     
     thread::spawn(move || {
@@ -316,6 +326,14 @@ pub fn start_upload(token: String, data: CloudSyncData) -> mpsc::Receiver<Result
         
         let result = upload_to_cloud(&token, &data, progress_callback)
             .map(|_| CloudOpResult::UploadSuccess);
+        
+        // After successful upload, also submit install sizes (best effort, don't fail upload)
+        if result.is_ok() && !install_sizes.is_empty() {
+            if let Err(e) = submit_size_on_disk(&token, &install_sizes) {
+                eprintln!("Failed to submit install sizes: {}", e);
+            }
+        }
+        
         let _ = tx.send(result);
     });
     
@@ -433,4 +451,62 @@ pub fn fetch_user_achievement_ratings(token: &str) -> Result<Vec<(u64, String, u
         .map_err(|e| format!("Failed to parse response: {}", e))?;
     
     Ok(result.ratings.into_iter().map(|r| (r.appid, r.apiname, r.rating)).collect())
+}
+
+// ============================================================================
+// Size on Disk Sync
+// ============================================================================
+
+/// Submit install sizes to the server
+/// This helps build a community database of game install sizes
+pub fn submit_size_on_disk(token: &str, sizes: &[(u64, u64)]) -> Result<usize, String> {
+    if sizes.is_empty() {
+        return Ok(0);
+    }
+    
+    let url = format!("{}/api/size-on-disk", DEFAULT_SERVER_URL);
+    
+    #[derive(serde::Serialize)]
+    struct SizeInfo {
+        appid: u64,
+        size_bytes: u64,
+    }
+    
+    #[derive(serde::Serialize)]
+    struct SubmitRequest {
+        sizes: Vec<SizeInfo>,
+    }
+    
+    let request = SubmitRequest {
+        sizes: sizes.iter().map(|(appid, size_bytes)| SizeInfo {
+            appid: *appid,
+            size_bytes: *size_bytes,
+        }).collect(),
+    };
+    
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&request)
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+    
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+    
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
+    struct SubmitResponse {
+        success: bool,
+        count: usize,
+    }
+    
+    let result: SubmitResponse = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    
+    Ok(result.count)
 }
