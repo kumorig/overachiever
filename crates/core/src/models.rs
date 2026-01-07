@@ -274,6 +274,24 @@ pub struct CloudSyncData {
     pub exported_at: DateTime<Utc>,
 }
 
+// ============================================================================
+// Time To Beat (HLTB) Data
+// ============================================================================
+
+/// Time to beat data from HowLongToBeat
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TtbTimes {
+    pub appid: u64,
+    /// Main story completion time in hours
+    pub main: Option<f32>,
+    /// Main + extras completion time in hours
+    pub main_extra: Option<f32>,
+    /// Completionist time in hours
+    pub completionist: Option<f32>,
+    /// When this data was last updated
+    pub updated_at: DateTime<Utc>,
+}
+
 /// GDPR consent status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -292,9 +310,21 @@ impl GdprConsent {
     pub fn is_set(&self) -> bool {
         !matches!(self, GdprConsent::Unset)
     }
-    
+
     /// Returns true if user has accepted
     pub fn is_accepted(&self) -> bool {
         matches!(self, GdprConsent::Accepted)
     }
+}
+
+// ============================================================================
+// Game Tags (from SteamSpy)
+// ============================================================================
+
+/// A tag for a game with vote count
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameTag {
+    pub appid: u64,
+    pub tag_name: String,
+    pub vote_count: u32,
 }

@@ -25,7 +25,47 @@ impl GamesTablePlatform for SteamOverachieverApp {
             self.sort_column = column;
             self.sort_order = SortOrder::Ascending;
         }
-        sort_games(&mut self.games, self.sort_column, self.sort_order);
+        // TTB sorting needs access to cache, handle it specially
+        if column == SortColumn::TimeToBeat {
+            let order = self.sort_order;
+            let cache = &self.ttb_cache;
+            self.games.sort_by(|a, b| {
+                let a_ttb = cache.get(&a.appid).and_then(|t| t.main).unwrap_or(-1.0);
+                let b_ttb = cache.get(&b.appid).and_then(|t| t.main).unwrap_or(-1.0);
+                let cmp = a_ttb.partial_cmp(&b_ttb).unwrap_or(std::cmp::Ordering::Equal);
+                if order == SortOrder::Descending { cmp.reverse() } else { cmp }
+            });
+        } else if column == SortColumn::Votes {
+            // Votes sorting needs access to tags cache and current filter tags
+            // Sort by votes for the selected tag (or first tag if none selected)
+            let order = self.sort_order;
+            let tags_cache = &self.tags_cache;
+            let filter_tags = self.filter_tags.clone();
+            let selected_idx = self.selected_vote_tag_index.unwrap_or(0);
+            let selected_tag = filter_tags.get(selected_idx).cloned();
+            self.games.sort_by(|a, b| {
+                let a_votes: i32 = match &selected_tag {
+                    Some(tag) => {
+                        tags_cache.get(&a.appid).and_then(|tags| {
+                            tags.iter().find(|(name, _)| name == tag).map(|(_, count)| *count as i32)
+                        }).unwrap_or(-1)
+                    }
+                    None => -1,
+                };
+                let b_votes: i32 = match &selected_tag {
+                    Some(tag) => {
+                        tags_cache.get(&b.appid).and_then(|tags| {
+                            tags.iter().find(|(name, _)| name == tag).map(|(_, count)| *count as i32)
+                        }).unwrap_or(-1)
+                    }
+                    None => -1,
+                };
+                let cmp = a_votes.cmp(&b_votes);
+                if order == SortOrder::Descending { cmp.reverse() } else { cmp }
+            });
+        } else {
+            sort_games(&mut self.games, self.sort_column, self.sort_order);
+        }
     }
     
     fn filter_name(&self) -> &str {
@@ -153,6 +193,136 @@ impl GamesTablePlatform for SteamOverachieverApp {
     
     fn set_filter_installed(&mut self, filter: TriFilter) {
         self.filter_installed = filter;
+    }
+    
+    // ============================================================================
+    // TTB (Time To Beat) Methods
+    // ============================================================================
+
+    fn show_ttb_column(&self) -> bool {
+        // Always show TTB column - data is visible to everyone
+        true
+    }
+
+    fn can_fetch_ttb(&self) -> bool {
+        // Only allow fetching in admin mode
+        self.admin_mode
+    }
+    
+    fn fetch_ttb(&mut self, appid: u64, game_name: &str) {
+        // Open the search dialog instead of fetching immediately
+        // Clean the game name for search: remove symbols, apostrophe+s, normalize spaces
+        let cleaned = crate::ttb::clean_game_name_for_search(game_name);
+        self.ttb_search_pending = Some((appid, game_name.to_string(), cleaned));
+    }
+    
+    fn get_ttb_times(&self, appid: u64) -> Option<&overachiever_core::TtbTimes> {
+        self.ttb_cache.get(&appid)
+    }
+    
+    fn is_fetching_ttb(&self, appid: u64) -> bool {
+        self.ttb_fetching == Some(appid)
+    }
+
+    fn filter_ttb(&self) -> TriFilter {
+        self.filter_ttb
+    }
+
+    fn set_filter_ttb(&mut self, filter: TriFilter) {
+        self.filter_ttb = filter;
+    }
+
+    fn is_ttb_blacklisted(&self, appid: u64) -> bool {
+        self.ttb_blacklist.contains(&appid)
+    }
+
+    fn add_to_ttb_blacklist(&mut self, appid: u64, game_name: &str) {
+        SteamOverachieverApp::add_to_ttb_blacklist(self, appid, game_name);
+    }
+
+    fn remove_from_ttb_blacklist(&mut self, appid: u64) {
+        SteamOverachieverApp::remove_from_ttb_blacklist(self, appid);
+    }
+
+    fn name_column_width(&self) -> f32 {
+        self.config.name_column_width
+    }
+
+    fn set_name_column_width(&mut self, width: f32) {
+        self.config.name_column_width = width;
+    }
+
+    // ============================================================================
+    // Tag Methods (SteamSpy data)
+    // ============================================================================
+
+    fn filter_tags(&self) -> &[String] {
+        &self.filter_tags
+    }
+
+    fn set_filter_tags(&mut self, tags: Vec<String>) {
+        self.filter_tags = tags;
+    }
+
+    fn tag_search_input(&self) -> &str {
+        &self.tag_search_input
+    }
+
+    fn set_tag_search_input(&mut self, input: String) {
+        self.tag_search_input = input;
+    }
+
+    fn available_tags(&self) -> &[String] {
+        &self.available_tags
+    }
+
+    fn get_tag_vote_count(&self, appid: u64, tag_name: &str) -> Option<u32> {
+        self.tags_cache.get(&appid).and_then(|tags| {
+            tags.iter().find(|(name, _)| name == tag_name).map(|(_, count)| *count)
+        })
+    }
+
+    fn has_cached_tags(&self, appid: u64) -> bool {
+        self.tags_cache.get(&appid).map(|t| !t.is_empty()).unwrap_or(false)
+    }
+
+    fn can_fetch_tags(&self) -> bool {
+        self.admin_mode
+    }
+
+    fn fetch_tags(&mut self, appid: u64) {
+        // Add to queue if not already fetching
+        if self.tags_fetching.is_none() && !self.tags_fetch_queue.contains(&appid) {
+            self.tags_fetch_queue.push(appid);
+        }
+    }
+
+    fn is_fetching_tags(&self, appid: u64) -> bool {
+        self.tags_fetching == Some(appid)
+    }
+
+    fn tag_search_selected_index(&self) -> Option<usize> {
+        self.tag_search_selected_index
+    }
+
+    fn set_tag_search_selected_index(&mut self, index: Option<usize>) {
+        self.tag_search_selected_index = index;
+    }
+
+    fn tag_filter_mode_and(&self) -> bool {
+        self.tag_filter_mode_and
+    }
+
+    fn set_tag_filter_mode_and(&mut self, and_mode: bool) {
+        self.tag_filter_mode_and = and_mode;
+    }
+
+    fn selected_vote_tag_index(&self) -> Option<usize> {
+        self.selected_vote_tag_index
+    }
+
+    fn set_selected_vote_tag_index(&mut self, index: Option<usize>) {
+        self.selected_vote_tag_index = index;
     }
 }
 

@@ -22,11 +22,13 @@ Contributions are welcome. Make a PR or open an issue.
 About half of the code has been "vibe-coded", feel free to help clean-up any mess. AI contributions are welcome, but at least do some low effort testing before submitting a PR. Thanks!
 
 ## Roadmap (so I don't forget :>)
+- [ ] post time to beat. 
+- [ ] post comments (tag multiple achievements).
 - [ ] upload progress added in last version doesn't show progress. (you had one job)
-- [ ] make it obvious that we are viewing someone elses library (looks identical to your own right now) #WASM
+- [ ] charts by 1w,1m,3m,6m,1y,max (or similar)
+- [ ] list recently added user games to some list
 - [ ] fix profile button (icon, naming, intent), it's confusing.
 - [ ] CJK font option
-- [ ] tag achievements with comments.
 - [ ] (important for the future!!): If we ever get a few more users, and more than one user scans at the same time, we will hit rate limits. We should implement some kind of queue. And run a backend service to handle requests. -- Currently if you leave the app, requests will stop, but the backend could keep going. its also a problem to let the client trigger requests indescriminately. 
 - [ ] Improve privacy policy parts. It's not very clear what data is stored or sent where.
 

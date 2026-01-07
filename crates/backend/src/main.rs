@@ -95,6 +95,19 @@ async fn main() {
         // Size on disk endpoints
         .route("/size-on-disk", get(routes::get_size_on_disk))
         .route("/api/size-on-disk", post(routes::submit_size_on_disk))
+        // Time to beat (TTB) endpoints
+        .route("/api/ttb", post(routes::submit_ttb))
+        .route("/api/ttb/{appid}", get(routes::get_ttb))
+        .route("/api/ttb/batch", post(routes::get_ttb_batch))
+        // TTB blacklist endpoints
+        .route("/api/ttb/blacklist", get(routes::get_ttb_blacklist))
+        .route("/api/ttb/blacklist", post(routes::add_to_ttb_blacklist))
+        .route("/api/ttb/blacklist/{appid}", delete(routes::remove_from_ttb_blacklist))
+        // Game tags endpoints (SteamSpy data)
+        .route("/api/tags", get(routes::get_all_tag_names))
+        .route("/api/tags", post(routes::submit_tags))
+        .route("/api/tags/{appid}", get(routes::get_tags_for_game))
+        .route("/api/tags/batch", post(routes::get_tags_batch))
         // Auth
         .route("/auth/steam", get(auth::steam_login))
         .route("/auth/steam/callback", get(auth::steam_callback))

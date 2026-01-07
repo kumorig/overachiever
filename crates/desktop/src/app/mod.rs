@@ -9,7 +9,7 @@ use crate::icon_cache::IconCache;
 use crate::steam_library::get_installed_games;
 use crate::ui::{AppState, SortColumn, SortOrder, TriFilter, ProgressReceiver};
 use crate::cloud_sync::{CloudSyncState, AuthResult, CloudOpResult};
-use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel, CloudSyncStatus};
+use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel, CloudSyncStatus, TtbTimes};
 
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
@@ -80,6 +80,68 @@ pub struct SteamOverachieverApp {
     pub(crate) installed_games: HashSet<u64>,
     // Filter for installed games
     pub(crate) filter_installed: TriFilter,
+    // TTB (Time To Beat) cache: appid -> TtbTimes
+    pub(crate) ttb_cache: HashMap<u64, TtbTimes>,
+    // TTB scan: list of (appid, name) pairs to scan
+    pub(crate) ttb_scan_queue: Vec<(u64, String)>,
+    // TTB scan: last fetch time (for rate limiting)
+    pub(crate) ttb_last_fetch: Option<Instant>,
+    // TTB scan: currently fetching single game
+    pub(crate) ttb_fetching: Option<u64>,
+    // TTB scan: receiver for async fetch result
+    pub(crate) ttb_receiver: Option<Receiver<Result<(u64, String, overachiever_core::TtbTimes), String>>>,
+    // TTB search dialog: (appid, game_name, editable_search_query)
+    pub(crate) ttb_search_pending: Option<(u64, String, String)>,
+    // TTB English name fetch: receiver for async result
+    pub(crate) english_name_receiver: Option<Receiver<Option<String>>>,
+    // Filter for TTB (Time to Beat)
+    pub(crate) filter_ttb: TriFilter,
+    // Settings tab selection
+    pub(crate) settings_tab: SettingsTab,
+    // Available system fonts (lazily loaded on first settings open)
+    pub(crate) available_fonts: Option<Vec<String>>,
+    // Pending font size (before save button is clicked)
+    pub(crate) pending_font_size: f32,
+    // Flag to trigger font update
+    pub(crate) fonts_need_update: bool,
+    // Admin mode toggle - enables TTB scanning and per-game TTB fetch
+    pub(crate) admin_mode: bool,
+    // TTB blacklist - games excluded from TTB scanning (loaded from backend)
+    pub(crate) ttb_blacklist: HashSet<u64>,
+    // Tag filters - currently selected tags (empty = show all games)
+    pub(crate) filter_tags: Vec<String>,
+    // Tag search input text for searchable dropdown
+    pub(crate) tag_search_input: String,
+    // Available tags for dropdown (loaded from backend)
+    pub(crate) available_tags: Vec<String>,
+    // Tags cache: appid -> Vec<(tag_name, vote_count)>
+    pub(crate) tags_cache: HashMap<u64, Vec<(String, u32)>>,
+    // Tags fetch queue: list of appids to fetch tags for
+    pub(crate) tags_fetch_queue: Vec<u64>,
+    // Currently fetching tags for this appid
+    pub(crate) tags_fetching: Option<u64>,
+    // Receiver for async tag fetch result
+    pub(crate) tags_receiver: Option<Receiver<Result<(u64, Vec<(String, u32)>), String>>>,
+    // Total count for tags scan progress (0 when not scanning)
+    pub(crate) tags_scan_total: i32,
+    // Last time we fetched tags (for rate limiting)
+    pub(crate) tags_last_fetch: Option<Instant>,
+    // Tag search dropdown keyboard navigation - selected index
+    pub(crate) tag_search_selected_index: Option<usize>,
+    // Tag filter mode: AND (all tags required) or OR (any tag matches)
+    pub(crate) tag_filter_mode_and: bool,
+    // Selected tag index for vote column display (default 0 = first tag)
+    pub(crate) selected_vote_tag_index: Option<usize>,
+}
+
+/// Settings tab selection
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum SettingsTab {
+    #[default]
+    General,
+    Steam,
+    Cloud,
+    Debug,
 }
 
 /// Cloud action pending confirmation
@@ -95,6 +157,7 @@ impl SteamOverachieverApp {
         let config = Config::load();
         let show_settings = !config.is_valid(); // Show settings on first run if not configured
         let steam_id = config.steam_id.as_str();
+        let initial_font_size = config.font_size;
         let conn = open_connection().expect("Failed to open database");
         
         // Finalize any pending migrations with the user's steam_id
@@ -184,13 +247,67 @@ impl SteamOverachieverApp {
             game_launch_times: HashMap::new(),
             installed_games,
             filter_installed: TriFilter::All,
+            ttb_cache: HashMap::new(),
+            ttb_scan_queue: Vec::new(),
+            ttb_last_fetch: None,
+            ttb_fetching: None,
+            ttb_receiver: None,
+            ttb_search_pending: None,
+            english_name_receiver: None,
+            filter_ttb: TriFilter::All,
+            settings_tab: SettingsTab::default(),
+            available_fonts: None,
+            pending_font_size: initial_font_size,
+            fonts_need_update: false,
+            admin_mode: false,
+            ttb_blacklist: HashSet::new(),
+            filter_tags: Vec::new(),
+            tag_search_input: String::new(),
+            available_tags: Vec::new(),
+            tags_cache: HashMap::new(),
+            tags_fetch_queue: Vec::new(),
+            tags_fetching: None,
+            tags_receiver: None,
+            tags_scan_total: 0,
+            tags_last_fetch: None,
+            tag_search_selected_index: None,
+            tag_filter_mode_and: true,
+            selected_vote_tag_index: None,
         };
         
         // Apply consistent sorting after loading from database
         app.sort_games();
-        
+
+        // Helper to log to ttb_log.txt
+        fn init_log(msg: &str) {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("ttb_log.txt")
+            {
+                let _ = writeln!(file, "[{}] {}", chrono::Local::now().format("%H:%M:%S"), msg);
+            }
+        }
+
+        // Load TTB cache from local database
+        init_log("Loading TTB cache...");
+        app.load_ttb_cache();
+
+        // Load TTB blacklist from backend (games to skip in TTB scan)
+        init_log("Loading TTB blacklist...");
+        app.load_ttb_blacklist();
+
+        // Load available tags and tags for games from backend
+        init_log("Loading available tags...");
+        app.load_available_tags();
+        init_log(&format!("Loading tags for {} games...", app.games.len()));
+        app.load_tags_for_games();
+        init_log("Tags loaded, starting update...");
+
         // Auto-start update on launch
         app.start_update();
+        init_log("Update started");
         
         app
     }
@@ -202,27 +319,154 @@ impl eframe::App for SteamOverachieverApp {
         self.cleanup_expired_flashes();
         self.check_auth_callback();
         self.check_cloud_operation();
-        
+        self.ttb_scan_tick(); // Process TTB scan queue
+        self.tags_fetch_tick(); // Process tags fetch queue
+
         let is_busy = self.state.is_busy();
         let has_flashing = !self.updated_games.is_empty();
         let is_linking = self.auth_receiver.is_some();
         let is_cloud_op = self.cloud_op_receiver.is_some();
         let has_launch_cooldowns = !self.game_launch_times.is_empty();
-        
+        let is_ttb_scanning = !self.ttb_scan_queue.is_empty();
+        let is_ttb_fetching = self.ttb_receiver.is_some();
+
         // Request repaint while busy or while animations are active
-        if is_busy || has_flashing || is_linking || is_cloud_op || has_launch_cooldowns {
+        if is_busy || has_flashing || is_linking || is_cloud_op || has_launch_cooldowns || is_ttb_scanning || is_ttb_fetching {
             ctx.request_repaint();
         }
-        
+
+        // Track window state for persistence (only when not maximized to preserve restore size)
+        ctx.input(|i| {
+            let maximized = i.viewport().maximized.unwrap_or(false);
+            self.config.window_maximized = maximized;
+
+            // Only save position/size when not maximized (to preserve restore dimensions)
+            if !maximized {
+                if let Some(rect) = i.viewport().inner_rect {
+                    self.config.window_x = Some(rect.min.x);
+                    // Compensate for title bar offset (inner_rect reports ~30px higher than actual window position)
+                    self.config.window_y = Some((rect.min.y - 30.0).max(0.0));
+                    self.config.window_width = Some(rect.width());
+                    self.config.window_height = Some(rect.height());
+                }
+            }
+        });
+
         // Clean up expired launch cooldowns
         self.cleanup_expired_launch_cooldowns();
-        
+
         // Render panels
         self.render_top_panel(ctx);
         self.render_history_panel(ctx);
         self.render_games_table_panel(ctx);
-        
+
         // Show GDPR modal if needed (for hybrid/remote mode and consent not set)
         self.render_gdpr_modal(ctx);
+
+        // Show TTB search dialog if pending
+        self.render_ttb_search_dialog(ctx);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Save window state to config on exit
+        // Note: We save the last known state before exit
+        // The actual window rect is obtained via raw_window_handle integration
+        // For simplicity, we save periodically during update and trust that state
+        let _ = self.config.save();
+    }
+}
+
+impl SteamOverachieverApp {
+    /// Render the TTB search query dialog
+    fn render_ttb_search_dialog(&mut self, ctx: &egui::Context) {
+        let pending = match self.ttb_search_pending.take() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let (appid, game_name, mut search_query) = pending;
+        let mut confirmed = false;
+        let mut cancelled = false;
+
+        // Check if English name fetch completed
+        let is_fetching_english = self.english_name_receiver.is_some();
+        if let Some(ref rx) = self.english_name_receiver {
+            if let Ok(result) = rx.try_recv() {
+                if let Some(english_name) = result {
+                    // Update search query with cleaned English name
+                    search_query = crate::ttb::clean_game_name_for_search(&english_name);
+                }
+                self.english_name_receiver = None;
+            }
+        }
+
+        egui::Window::new("Search HowLongToBeat")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .fixed_size([400.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add_space(8.0);
+                ui.label(format!("Searching for: {}", game_name));
+                ui.add_space(8.0);
+
+                ui.horizontal(|ui| {
+                    ui.label("Search query:");
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut search_query)
+                            .desired_width(220.0)
+                    );
+                    // Focus the text field and select all on first show
+                    if response.gained_focus() {
+                        // Text is already selected by default when focused
+                    }
+                    // Press Enter to confirm
+                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        confirmed = true;
+                    }
+                    // Request focus on first frame (but not while fetching)
+                    if !is_fetching_english {
+                        response.request_focus();
+                    }
+
+                    // English name fetch button
+                    if is_fetching_english {
+                        ui.spinner();
+                    } else if ui.button("EN").on_hover_text("Fetch English name from Steam").clicked() {
+                        // Spawn background thread to fetch English name
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        self.english_name_receiver = Some(rx);
+                        std::thread::spawn(move || {
+                            let result = crate::ttb::fetch_english_name(appid);
+                            let _ = tx.send(result);
+                        });
+                    }
+                });
+
+                ui.add_space(12.0);
+
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                    if ui.button("OK").clicked() {
+                        confirmed = true;
+                    }
+                });
+
+                ui.add_space(4.0);
+            });
+
+        if cancelled {
+            // Dialog dismissed, don't restore pending state
+            self.english_name_receiver = None; // Cancel any pending fetch
+        } else if confirmed {
+            // Fetch with the (possibly modified) query
+            self.fetch_single_ttb_with_query(appid, &game_name, &search_query);
+            self.english_name_receiver = None;
+        } else {
+            // Keep dialog open
+            self.ttb_search_pending = Some((appid, game_name, search_query));
+        }
     }
 }

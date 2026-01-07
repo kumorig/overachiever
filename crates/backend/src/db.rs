@@ -1056,7 +1056,7 @@ pub async fn log_api_request(
     app_ids: Option<&str>,
 ) -> Result<(), DbError> {
     let client = pool.get().await?;
-    
+
     client.execute(
         r#"
         INSERT INTO api_request_log (endpoint, client_ip, user_agent, referer, query_params, app_ids, requested_at)
@@ -1064,6 +1064,255 @@ pub async fn log_api_request(
         "#,
         &[&endpoint, &client_ip, &user_agent, &referer, &query_params, &app_ids]
     ).await?;
-    
+
     Ok(())
+}
+
+// ============================================================================
+// Time To Beat (TTB) Data
+// ============================================================================
+
+/// Upsert TTB times for a game (from desktop scraper)
+pub async fn upsert_ttb_times(
+    pool: &Pool,
+    appid: u64,
+    game_name: &str,
+    main: Option<f32>,
+    main_extra: Option<f32>,
+    completionist: Option<f32>,
+) -> Result<(), DbError> {
+    let client = pool.get().await?;
+
+    client.execute(
+        r#"
+        INSERT INTO ttb_times (appid, game_name, main, main_extra, completionist, reported_count, first_reported_at, last_reported_at)
+        VALUES ($1, $2, $3, $4, $5, 1, NOW(), NOW())
+        ON CONFLICT (appid) DO UPDATE SET
+            game_name = EXCLUDED.game_name,
+            main = COALESCE(EXCLUDED.main, ttb_times.main),
+            main_extra = COALESCE(EXCLUDED.main_extra, ttb_times.main_extra),
+            completionist = COALESCE(EXCLUDED.completionist, ttb_times.completionist),
+            reported_count = ttb_times.reported_count + 1,
+            last_reported_at = NOW()
+        "#,
+        &[
+            &(appid as i64),
+            &game_name,
+            &main,
+            &main_extra,
+            &completionist,
+        ]
+    ).await?;
+
+    Ok(())
+}
+
+/// Get TTB times for a single game
+pub async fn get_ttb_times(pool: &Pool, appid: u64) -> Result<Option<overachiever_core::TtbTimes>, DbError> {
+    let client = pool.get().await?;
+
+    let row = client.query_opt(
+        "SELECT appid, main, main_extra, completionist, last_reported_at FROM ttb_times WHERE appid = $1",
+        &[&(appid as i64)]
+    ).await?;
+
+    Ok(row.map(|r| overachiever_core::TtbTimes {
+        appid: r.get::<_, i64>("appid") as u64,
+        main: r.get("main"),
+        main_extra: r.get("main_extra"),
+        completionist: r.get("completionist"),
+        updated_at: r.get("last_reported_at"),
+    }))
+}
+
+/// Get TTB times for multiple games
+pub async fn get_ttb_times_batch(pool: &Pool, appids: &[u64]) -> Result<Vec<overachiever_core::TtbTimes>, DbError> {
+    if appids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let client = pool.get().await?;
+    let appids_i64: Vec<i64> = appids.iter().map(|&id| id as i64).collect();
+
+    let rows = client.query(
+        "SELECT appid, main, main_extra, completionist, last_reported_at FROM ttb_times WHERE appid = ANY($1)",
+        &[&appids_i64]
+    ).await?;
+
+    let times = rows.into_iter().map(|r| overachiever_core::TtbTimes {
+        appid: r.get::<_, i64>("appid") as u64,
+        main: r.get("main"),
+        main_extra: r.get("main_extra"),
+        completionist: r.get("completionist"),
+        updated_at: r.get("last_reported_at"),
+    }).collect();
+
+    Ok(times)
+}
+
+// ============================================================================
+// TTB Blacklist (games excluded from TTB scanning)
+// ============================================================================
+
+/// Add a game to the TTB blacklist
+pub async fn add_to_ttb_blacklist(
+    pool: &Pool,
+    appid: u64,
+    game_name: &str,
+    reason: Option<&str>,
+    added_by_steam_id: &str,
+) -> Result<(), DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = added_by_steam_id.parse().unwrap_or(0);
+
+    client.execute(
+        r#"
+        INSERT INTO ttb_blacklist (appid, game_name, reason, added_by_steam_id, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (appid) DO UPDATE SET
+            game_name = EXCLUDED.game_name,
+            reason = EXCLUDED.reason,
+            added_by_steam_id = EXCLUDED.added_by_steam_id,
+            created_at = NOW()
+        "#,
+        &[
+            &(appid as i64),
+            &game_name,
+            &reason,
+            &steam_id_int,
+        ]
+    ).await?;
+
+    Ok(())
+}
+
+/// Remove a game from the TTB blacklist
+pub async fn remove_from_ttb_blacklist(pool: &Pool, appid: u64) -> Result<bool, DbError> {
+    let client = pool.get().await?;
+
+    let rows_affected = client.execute(
+        "DELETE FROM ttb_blacklist WHERE appid = $1",
+        &[&(appid as i64)]
+    ).await?;
+
+    Ok(rows_affected > 0)
+}
+
+/// Get all games in the TTB blacklist (returns list of appids)
+pub async fn get_ttb_blacklist(pool: &Pool) -> Result<Vec<u64>, DbError> {
+    let client = pool.get().await?;
+
+    let rows = client.query(
+        "SELECT appid FROM ttb_blacklist ORDER BY created_at DESC",
+        &[]
+    ).await?;
+
+    let appids = rows.into_iter()
+        .map(|r| r.get::<_, i64>("appid") as u64)
+        .collect();
+
+    Ok(appids)
+}
+
+/// Check if a game is in the TTB blacklist
+pub async fn is_in_ttb_blacklist(pool: &Pool, appid: u64) -> Result<bool, DbError> {
+    let client = pool.get().await?;
+
+    let row = client.query_opt(
+        "SELECT 1 FROM ttb_blacklist WHERE appid = $1",
+        &[&(appid as i64)]
+    ).await?;
+
+    Ok(row.is_some())
+}
+
+// ============================================================================
+// Game Tags (from SteamSpy)
+// ============================================================================
+
+/// Get all unique tag names (for dropdown filter)
+pub async fn get_all_tag_names(pool: &Pool) -> Result<Vec<String>, DbError> {
+    let client = pool.get().await?;
+
+    let rows = client.query(
+        "SELECT DISTINCT tag_name FROM game_tags ORDER BY tag_name",
+        &[]
+    ).await?;
+
+    let tags = rows.into_iter()
+        .map(|r| r.get::<_, String>("tag_name"))
+        .collect();
+
+    Ok(tags)
+}
+
+/// Get tags for a list of games
+pub async fn get_tags_for_games(pool: &Pool, appids: &[u64]) -> Result<Vec<overachiever_core::GameTag>, DbError> {
+    if appids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let client = pool.get().await?;
+    let appids_i64: Vec<i64> = appids.iter().map(|&id| id as i64).collect();
+
+    let rows = client.query(
+        "SELECT appid, tag_name, vote_count FROM game_tags WHERE appid = ANY($1)",
+        &[&appids_i64]
+    ).await?;
+
+    let tags = rows.into_iter().map(|r| overachiever_core::GameTag {
+        appid: r.get::<_, i64>("appid") as u64,
+        tag_name: r.get("tag_name"),
+        vote_count: r.get::<_, i32>("vote_count") as u32,
+    }).collect();
+
+    Ok(tags)
+}
+
+/// Get tags for a single game
+pub async fn get_tags_for_game(pool: &Pool, appid: u64) -> Result<Vec<overachiever_core::GameTag>, DbError> {
+    let client = pool.get().await?;
+
+    let rows = client.query(
+        "SELECT appid, tag_name, vote_count FROM game_tags WHERE appid = $1 ORDER BY vote_count DESC",
+        &[&(appid as i64)]
+    ).await?;
+
+    let tags = rows.into_iter().map(|r| overachiever_core::GameTag {
+        appid: r.get::<_, i64>("appid") as u64,
+        tag_name: r.get("tag_name"),
+        vote_count: r.get::<_, i32>("vote_count") as u32,
+    }).collect();
+
+    Ok(tags)
+}
+
+/// Upsert tags for a game (from SteamSpy)
+pub async fn upsert_game_tags(
+    pool: &Pool,
+    appid: u64,
+    tags: &[(String, u32)], // (tag_name, vote_count)
+) -> Result<usize, DbError> {
+    if tags.is_empty() {
+        return Ok(0);
+    }
+
+    let client = pool.get().await?;
+    let mut count = 0;
+
+    for (tag_name, vote_count) in tags {
+        client.execute(
+            r#"
+            INSERT INTO game_tags (appid, tag_name, vote_count, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (appid, tag_name) DO UPDATE SET
+                vote_count = EXCLUDED.vote_count,
+                updated_at = NOW()
+            "#,
+            &[&(appid as i64), tag_name, &(*vote_count as i32)]
+        ).await?;
+        count += 1;
+    }
+
+    Ok(count)
 }

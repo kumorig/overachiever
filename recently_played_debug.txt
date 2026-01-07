@@ -1,5 +1,5 @@
 === Recently Played API Debug ===
-Timestamp: 2025-12-30 18:48:30
+Timestamp: 2025-12-30 20:41:23
 Steam ID: 76561197975373553
 API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
 
@@ -11,12 +11,12 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "appid": 1197260,
         "img_icon_url": "3d690572671758c1a506c9d4f1bc6176d6569af6",
         "name": "The Perfect Tower II",
-        "playtime_2weeks": 4857,
+        "playtime_2weeks": 4886,
         "playtime_deck_forever": 0,
-        "playtime_forever": 19080,
+        "playtime_forever": 19109,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 19080
+        "playtime_windows_forever": 19109
       },
       {
         "appid": 1318690,
@@ -202,7 +202,7 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
 === Games List ===
 Total games in response: 17
 
-1. The Perfect Tower II (appid: 1197260) - 2 weeks: 4857 min, total: 19080 min
+1. The Perfect Tower II (appid: 1197260) - 2 weeks: 4886 min, total: 19109 min
 2. shapez (appid: 1318690) - 2 weeks: 1114 min, total: 3667 min
 3. Noobs Are Coming (appid: 2225960) - 2 weeks: 484 min, total: 484 min
 4. Free Solitaire (appid: 3330280) - 2 weeks: 284 min, total: 711 min

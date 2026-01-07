@@ -6,6 +6,7 @@
 //! - Error types
 //! - Shared UI components (with `ui` feature)
 
+pub mod constants;
 pub mod models;
 pub mod messages;
 pub mod error;
@@ -13,6 +14,7 @@ pub mod error;
 #[cfg(feature = "ui")]
 pub mod ui;
 
+pub use constants::*;
 pub use models::*;
 pub use messages::*;
 pub use error::*;

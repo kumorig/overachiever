@@ -364,13 +364,63 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     if let Some(ref api_key) = state.steam_api_key {
                         tracing::info!("Starting full achievement scan for user {} (force={})", steam_id, force);
                         let steam_id_u64: u64 = steam_id.parse().unwrap_or(0);
-                        
-                        // Get games that need scanning
+
+                        // Step 1: Fetch all owned games from Steam (like SyncFromSteam)
+                        let owned_games = match crate::steam_api::fetch_owned_games(api_key, steam_id_u64).await {
+                            Ok(g) => g,
+                            Err(e) => {
+                                tracing::error!("Steam API error for user {}: {:?}", steam_id, e);
+                                let _ = sender.send(Message::Text(serde_json::to_string(&ServerMessage::Error {
+                                    message: format!("Steam API error: {}", e)
+                                }).unwrap().into())).await;
+                                continue;
+                            }
+                        };
+
+                        tracing::info!("Fetched {} owned games from Steam for user {}", owned_games.len(), steam_id);
+                        let game_count = owned_games.len() as i32;
+                        let unplayed_count = owned_games.iter().filter(|g| g.playtime_forever == 0).count() as i32;
+
+                        if let Err(e) = crate::db::upsert_games(&state.db_pool, steam_id, &owned_games).await {
+                            let _ = sender.send(Message::Text(serde_json::to_string(&ServerMessage::Error {
+                                message: format!("Failed to save games: {:?}", e)
+                            }).unwrap().into())).await;
+                            continue;
+                        }
+
+                        // Record run history
+                        if let Err(e) = crate::db::insert_run_history(&state.db_pool, steam_id, game_count, unplayed_count).await {
+                            tracing::error!("Failed to insert run_history: {:?}", e);
+                        }
+
+                        // Step 2: Fetch recently played games (to capture F2P games not in GetOwnedGames)
+                        let recent_games = crate::steam_api::fetch_recently_played(api_key, steam_id_u64)
+                            .await
+                            .unwrap_or_default();
+
+                        if !recent_games.is_empty() {
+                            tracing::info!("Found {} recently played games for user {}", recent_games.len(), steam_id);
+                            if let Err(e) = crate::db::upsert_games(&state.db_pool, steam_id, &recent_games).await {
+                                tracing::warn!("Failed to upsert recently played games: {:?}", e);
+                            }
+
+                            // Update run_history if total increased
+                            if let Ok(all_games_after) = crate::db::get_user_games(&state.db_pool, steam_id).await {
+                                let new_total = all_games_after.len() as i32;
+                                if new_total > game_count {
+                                    if let Err(e) = crate::db::update_run_history_total(&state.db_pool, steam_id, new_total).await {
+                                        tracing::warn!("Failed to update run_history total: {:?}", e);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Step 3: Get games for achievement scanning
                         let games = match crate::db::get_user_games(&state.db_pool, steam_id).await {
                             Ok(g) => g,
                             Err(e) => {
-                                let _ = sender.send(Message::Text(serde_json::to_string(&ServerMessage::Error { 
-                                    message: format!("Failed to get games: {:?}", e) 
+                                let _ = sender.send(Message::Text(serde_json::to_string(&ServerMessage::Error {
+                                    message: format!("Failed to get games: {:?}", e)
                                 }).unwrap().into())).await;
                                 continue;
                             }

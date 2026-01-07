@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(sqlite3:*)",
+      "Bash(cargo check:*)",
+      "Bash(plink tatsugo:*)",
+      "WebFetch(domain:store.steampowered.com)",
+      "WebSearch",
+      "WebFetch(domain:steamspy.com)",
+      "WebFetch(domain:steamapi.xpaw.me)",
+      "WebFetch(domain:steamdb.info)"
     ]
   }
 }

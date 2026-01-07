@@ -152,7 +152,20 @@ pub fn scrape_achievements_with_progress(progress_tx: Sender<ScrapeProgress>, fo
     let total_games = games.len() as i32;
     let unplayed_games = games.iter().filter(|g| g.playtime_forever == 0).count() as i32;
     crate::db::insert_run_history(&conn, &config.steam_id, total_games, unplayed_games)?;
-    
+
+    // Step 1.5: Fetch recently played games (to capture F2P games not in GetOwnedGames)
+    let recent_games = fetch_recently_played_games(steam_key, steam_id, config.debug_recently_played)?;
+    if !recent_games.is_empty() {
+        crate::db::upsert_games(&conn, &config.steam_id, &recent_games)?;
+
+        // Recalculate total games after adding recently played
+        let all_games_after_upsert = crate::db::get_all_games(&conn, &config.steam_id)?;
+        let new_total = all_games_after_upsert.len() as i32;
+        if new_total > total_games {
+            crate::db::update_run_history_total(&conn, &config.steam_id, new_total)?;
+        }
+    }
+
     // Step 2: Scrape achievements - either just unscraped games or all games if force is true
     let games_to_scrape = if force {
         crate::db::get_all_games(&conn, &config.steam_id)?
@@ -314,33 +327,87 @@ pub fn fetch_recently_played_games(steam_key: &str, steam_id: u64, debug_output:
 
 /// Run the Update flow: fetch games, get recently played, scrape achievements for recent games
 pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(), Box<dyn std::error::Error>> {
+    // Helper to log to ttb_log.txt
+    fn update_log(msg: &str) {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("ttb_log.txt")
+        {
+            let _ = writeln!(file, "[{}] [update] {}", chrono::Local::now().format("%H:%M:%S"), msg);
+        }
+    }
+
+    update_log("run_update_with_progress started");
     let config = Config::load();
     if !config.has_steam_credentials() {
+        update_log("ERROR: No steam credentials");
         let _ = progress_tx.send(UpdateProgress::Error("Please configure steam_web_api_key and steam_id in config.toml".to_string()));
         return Ok(());
     }
     let steam_key = &config.steam_web_api_key;
     let steam_id = config.steam_id_u64().unwrap();
-    
+    update_log(&format!("Steam ID: {}", steam_id));
+
     // Step 1: Fetch owned games (quick)
     let _ = progress_tx.send(UpdateProgress::FetchingGames);
-    
+    update_log("Fetching owned games from Steam API...");
+
     let input = serde_json::json!({
         "steamid": steam_id,
         "include_appinfo": 1,
         "include_played_free_games": 1
     });
-    
+
     let url = format!(
         "{}?key={}&input_json={}&format=json",
         API_OWNED_GAMES,
         steam_key,
         urlencoding::encode(&input.to_string())
     );
-    
-    let response = reqwest::blocking::get(&url)?;
+
+    update_log(&format!("Making HTTP request to: {}", &url[..url.find("key=").unwrap_or(0) + 10])); // Log URL without full key
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    let response = match client.get(&url).send() {
+        Ok(r) => r,
+        Err(e) => {
+            update_log(&format!("HTTP request failed: {}", e));
+            let _ = progress_tx.send(UpdateProgress::Error(format!("Network error: {}", e)));
+            return Ok(());
+        }
+    };
+    update_log(&format!("Got response, status: {}", response.status()));
+
+    // Check for API key errors
+    if response.status() == reqwest::StatusCode::FORBIDDEN {
+        update_log("ERROR: Steam API returned 403 Forbidden - invalid API key");
+        let _ = progress_tx.send(UpdateProgress::Error("Invalid Steam API key. Please check your key at steamcommunity.com/dev/apikey".to_string()));
+        return Ok(());
+    }
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        update_log("ERROR: Steam API returned 401 Unauthorized - invalid API key");
+        let _ = progress_tx.send(UpdateProgress::Error("Invalid Steam API key. Please check your key at steamcommunity.com/dev/apikey".to_string()));
+        return Ok(());
+    }
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_text = response.text().unwrap_or_default();
+        update_log(&format!("ERROR: Steam API returned {}: {}", status, body_text));
+        // Check for "Access is denied" in body
+        if body_text.contains("Access is denied") {
+            let _ = progress_tx.send(UpdateProgress::Error("Invalid Steam API key. Please check your key at steamcommunity.com/dev/apikey".to_string()));
+        } else {
+            let _ = progress_tx.send(UpdateProgress::Error(format!("Steam API error: {} - {}", status, body_text)));
+        }
+        return Ok(());
+    }
+
     let body: serde_json::Value = response.json()?;
-    
+    update_log("Parsed JSON response");
+
     let games: Vec<SteamGame> = body["response"]["games"]
         .as_array()
         .map(|arr| {
@@ -349,8 +416,11 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
                 .collect()
         })
         .unwrap_or_default();
-    
+    update_log(&format!("Parsed {} games", games.len()));
+
+    update_log("Opening database connection...");
     let conn = crate::db::open_connection()?;
+    update_log("Upserting games to database...");
     crate::db::upsert_games(&conn, &config.steam_id, &games)?;
     let total_games = games.len() as i32;
     let unplayed_games = games.iter().filter(|g| g.playtime_forever == 0).count() as i32;

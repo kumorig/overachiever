@@ -510,3 +510,185 @@ pub fn submit_size_on_disk(token: &str, sizes: &[(u64, u64)]) -> Result<usize, S
     
     Ok(result.count)
 }
+
+// ============================================================================
+// TTB Blacklist API
+// ============================================================================
+
+/// Fetch the TTB blacklist from the server (public, no auth required)
+pub fn fetch_ttb_blacklist() -> Result<Vec<u64>, String> {
+    let url = format!("{}/api/ttb/blacklist", DEFAULT_SERVER_URL);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct BlacklistResponse {
+        appids: Vec<u64>,
+    }
+
+    let result: BlacklistResponse = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(result.appids)
+}
+
+/// Add a game to the TTB blacklist (admin only)
+pub fn add_to_ttb_blacklist(token: &str, appid: u64, game_name: &str, reason: Option<&str>) -> Result<(), String> {
+    let url = format!("{}/api/ttb/blacklist", DEFAULT_SERVER_URL);
+
+    let client = reqwest::blocking::Client::new();
+    let body = serde_json::json!({
+        "appid": appid,
+        "game_name": game_name,
+        "reason": reason
+    });
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&body)
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    Ok(())
+}
+
+/// Remove a game from the TTB blacklist (admin only)
+pub fn remove_from_ttb_blacklist(token: &str, appid: u64) -> Result<(), String> {
+    let url = format!("{}/api/ttb/blacklist/{}", DEFAULT_SERVER_URL, appid);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Game Tags API (SteamSpy data)
+// ============================================================================
+
+/// Fetch all available tag names from the server
+pub fn fetch_tag_names() -> Result<Vec<String>, String> {
+    let url = format!("{}/api/tags", DEFAULT_SERVER_URL);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TagNamesResponse {
+        tags: Vec<String>,
+    }
+
+    let result: TagNamesResponse = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(result.tags)
+}
+
+/// Fetch tags for a batch of games from the server
+pub fn fetch_tags_batch(appids: &[u64]) -> Result<Vec<overachiever_core::GameTag>, String> {
+    if appids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let url = format!("{}/api/tags/batch", DEFAULT_SERVER_URL);
+
+    #[derive(serde::Serialize)]
+    struct BatchRequest {
+        appids: Vec<u64>,
+    }
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(&url)
+        .json(&BatchRequest { appids: appids.to_vec() })
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct BatchResponse {
+        tags: Vec<overachiever_core::GameTag>,
+    }
+
+    let result: BatchResponse = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(result.tags)
+}
+
+/// Submit tags for a game to the server (admin only)
+pub fn submit_tags(token: &str, appid: u64, tags: &[(String, u32)]) -> Result<usize, String> {
+    let url = format!("{}/api/tags", DEFAULT_SERVER_URL);
+
+    #[derive(serde::Serialize)]
+    struct SubmitRequest {
+        appid: u64,
+        tags: Vec<(String, u32)>,
+    }
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&SubmitRequest { appid, tags: tags.to_vec() })
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SubmitResponse {
+        success: bool,
+        count: usize,
+    }
+
+    let result: SubmitResponse = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(result.count)
+}

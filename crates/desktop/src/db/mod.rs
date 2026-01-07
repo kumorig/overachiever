@@ -1,10 +1,22 @@
 use rusqlite::{Connection, Result};
 use overachiever_core::{
-    Game, RunHistory, SteamGame, Achievement, AchievementHistory, 
+    Game, RunHistory, SteamGame, Achievement, AchievementHistory,
     GameAchievement, AchievementSchema, RecentAchievement, FirstPlay, LogEntry,
-    CloudSyncData, SyncAchievement
+    CloudSyncData, SyncAchievement, TtbTimes
 };
 use chrono::Utc;
+
+// Helper functions for u64 <-> i64 conversion for SQLite
+// rusqlite 0.38+ removed ToSql/FromSql for u64
+#[inline]
+fn appid_to_sql(appid: u64) -> i64 {
+    appid as i64
+}
+
+#[inline]
+fn appid_from_sql(val: i64) -> u64 {
+    val as u64
+}
 
 const DB_PATH: &str = "steam_overachiever.db";
 
@@ -135,6 +147,18 @@ fn init_tables(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (steam_id, appid, apiname)
+        )",
+        [],
+    )?;
+
+    // TTB (Time To Beat) cache table - game metadata, not user-specific
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ttb_cache (
+            appid INTEGER PRIMARY KEY,
+            main REAL,
+            main_extra REAL,
+            completionist REAL,
+            cached_at TEXT NOT NULL
         )",
         [],
     )?;
@@ -400,7 +424,7 @@ pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> R
              img_icon_url = excluded.img_icon_url",
             (
                 steam_id,
-                game.appid,
+                appid_to_sql(game.appid),
                 &game.name,
                 game.playtime_forever,
                 game.rtime_last_played,
@@ -433,7 +457,7 @@ pub fn get_all_games(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
         });
         
         Ok(Game {
-            appid: row.get(0)?,
+            appid: appid_from_sql(row.get(0)?),
             name: row.get(1)?,
             playtime_forever: row.get(2)?,
             rtime_last_played: row.get(3)?,
@@ -455,7 +479,7 @@ pub fn update_game_achievements(conn: &Connection, steam_id: &str, appid: u64, a
     
     conn.execute(
         "UPDATE games SET achievements_total = ?1, achievements_unlocked = ?2, last_achievement_scrape = ?3 WHERE steam_id = ?4 AND appid = ?5",
-        (total, unlocked, &now, steam_id, appid),
+        (total, unlocked, &now, steam_id, appid_to_sql(appid)),
     )?;
     Ok(())
 }
@@ -464,7 +488,7 @@ pub fn mark_game_no_achievements(conn: &Connection, steam_id: &str, appid: u64) 
     let now = Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE games SET achievements_total = 0, achievements_unlocked = 0, last_achievement_scrape = ?1 WHERE steam_id = ?2 AND appid = ?3",
-        (&now, steam_id, appid),
+        (&now, steam_id, appid_to_sql(appid)),
     )?;
     Ok(())
 }
@@ -483,7 +507,7 @@ pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -
             .unwrap_or_else(|_| Utc::now());
         
         Ok(Game {
-            appid: row.get(0)?,
+            appid: appid_from_sql(row.get(0)?),
             name: row.get(1)?,
             playtime_forever: row.get(2)?,
             rtime_last_played: row.get(3)?,
@@ -650,7 +674,7 @@ pub fn save_game_achievements(
              unlocktime = excluded.unlocktime",
             (
                 steam_id,
-                appid,
+                appid_to_sql(appid),
                 &ach.name,
                 &ach.display_name,
                 &ach.description,
@@ -672,7 +696,7 @@ pub fn get_game_achievements(conn: &Connection, steam_id: &str, appid: u64) -> R
          FROM achievements WHERE steam_id = ?1 AND appid = ?2 ORDER BY name"
     )?;
     
-    let achievements = stmt.query_map([steam_id, &appid.to_string()], |row| {
+    let achievements = stmt.query_map(rusqlite::params![steam_id, appid_to_sql(appid)], |row| {
         let unlocktime_unix: Option<i64> = row.get(7)?;
         let unlocktime = unlocktime_unix.map(|ts| {
             chrono::DateTime::from_timestamp(ts, 0)
@@ -681,7 +705,7 @@ pub fn get_game_achievements(conn: &Connection, steam_id: &str, appid: u64) -> R
         });
         
         Ok(GameAchievement {
-            appid: row.get(0)?,
+            appid: appid_from_sql(row.get(0)?),
             apiname: row.get(1)?,
             name: row.get(2)?,
             description: row.get(3)?,
@@ -713,7 +737,7 @@ pub fn get_recent_achievements(conn: &Connection, steam_id: &str, limit: i32) ->
             .unwrap_or_else(|| Utc::now());
         
         Ok(RecentAchievement {
-            appid: row.get(0)?,
+            appid: appid_from_sql(row.get(0)?),
             game_name: row.get(1)?,
             apiname: row.get(2)?,
             achievement_name: row.get(3)?,
@@ -730,7 +754,7 @@ pub fn get_recent_achievements(conn: &Connection, steam_id: &str, limit: i32) ->
 pub fn record_first_play(conn: &Connection, steam_id: &str, appid: u64, played_at: i64) -> Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO first_plays (steam_id, appid, played_at) VALUES (?1, ?2, ?3)",
-        rusqlite::params![steam_id, appid, played_at],
+        rusqlite::params![steam_id, appid_to_sql(appid), played_at],
     )?;
     Ok(())
 }
@@ -753,7 +777,7 @@ pub fn get_recent_first_plays(conn: &Connection, steam_id: &str, limit: i32) -> 
             .unwrap_or_else(|| Utc::now());
         
         Ok(FirstPlay {
-            appid: row.get(0)?,
+            appid: appid_from_sql(row.get(0)?),
             game_name: row.get(1)?,
             played_at,
             game_icon_url: row.get(3)?,
@@ -820,7 +844,7 @@ pub fn get_all_achievements_for_export(conn: &Connection, steam_id: &str) -> Res
         });
         
         Ok(SyncAchievement {
-            appid: row.get(0)?,
+            appid: appid_from_sql(row.get(0)?),
             apiname: row.get(1)?,
             achieved: row.get::<_, i32>(2)? == 1,
             unlocktime,
@@ -850,7 +874,7 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 steam_id,
-                game.appid,
+                appid_to_sql(game.appid),
                 game.name,
                 game.playtime_forever,
                 game.rtime_last_played,
@@ -877,7 +901,7 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
                 ?4, ?5)",
             rusqlite::params![
                 steam_id,
-                ach.appid,
+                appid_to_sql(ach.appid),
                 ach.apiname,
                 if ach.achieved { 1 } else { 0 },
                 ach.unlocktime.map(|t| t.timestamp()),
@@ -933,7 +957,7 @@ pub fn set_achievement_rating(conn: &Connection, steam_id: &str, appid: u64, api
          ON CONFLICT(steam_id, appid, apiname) DO UPDATE SET
          rating = excluded.rating,
          updated_at = excluded.updated_at",
-        rusqlite::params![steam_id, appid, apiname, rating, now],
+        rusqlite::params![steam_id, appid_to_sql(appid), apiname, rating, now],
     )?;
     Ok(())
 }
@@ -943,7 +967,7 @@ pub fn set_achievement_rating(conn: &Connection, steam_id: &str, appid: u64, api
 pub fn get_achievement_rating(conn: &Connection, steam_id: &str, appid: u64, apiname: &str) -> Result<Option<u8>> {
     let result = conn.query_row(
         "SELECT rating FROM user_achievement_ratings WHERE steam_id = ?1 AND appid = ?2 AND apiname = ?3",
-        rusqlite::params![steam_id, appid, apiname],
+        rusqlite::params![steam_id, appid_to_sql(appid), apiname],
         |row| row.get(0),
     );
     
@@ -959,10 +983,70 @@ pub fn get_all_achievement_ratings(conn: &Connection, steam_id: &str) -> Result<
     let mut stmt = conn.prepare(
         "SELECT appid, apiname, rating FROM user_achievement_ratings WHERE steam_id = ?1"
     )?;
-    
+
     let ratings = stmt.query_map([steam_id], |row| {
-        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        Ok((appid_from_sql(row.get(0)?), row.get(1)?, row.get(2)?))
     })?.collect::<Result<Vec<_>>>()?;
-    
+
     Ok(ratings)
 }
+
+// ============================================================================
+// TTB (Time To Beat) Cache Functions
+// ============================================================================
+
+/// Cache TTB times for a game locally
+pub fn cache_ttb_times(conn: &Connection, times: &TtbTimes) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO ttb_cache (appid, main, main_extra, completionist, cached_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![appid_to_sql(times.appid), times.main, times.main_extra, times.completionist, now],
+    )?;
+    Ok(())
+}
+
+/// Get cached TTB times for a game
+pub fn get_cached_ttb(conn: &Connection, appid: u64) -> Result<Option<TtbTimes>> {
+    let result = conn.query_row(
+        "SELECT appid, main, main_extra, completionist, cached_at FROM ttb_cache WHERE appid = ?1",
+        [appid_to_sql(appid)],
+        |row| {
+            let cached_at_str: String = row.get(4)?;
+            let updated_at = chrono::DateTime::parse_from_rfc3339(&cached_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            Ok(TtbTimes {
+                appid: appid_from_sql(row.get(0)?),
+                main: row.get(1)?,
+                main_extra: row.get(2)?,
+                completionist: row.get(3)?,
+                updated_at,
+            })
+        },
+    );
+
+    match result {
+        Ok(times) => Ok(Some(times)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Get all game appids that don't have cached TTB data
+pub fn get_games_without_ttb(conn: &Connection, steam_id: &str) -> Result<Vec<(u64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT g.appid, g.name FROM games g
+         LEFT JOIN ttb_cache t ON g.appid = t.appid
+         WHERE g.steam_id = ?1 AND t.appid IS NULL
+         ORDER BY g.name"
+    )?;
+
+    let games = stmt.query_map([steam_id], |row| {
+        Ok((appid_from_sql(row.get(0)?), row.get(1)?))
+    })?.collect::<Result<Vec<_>>>()?;
+
+    Ok(games)
+}
+

@@ -12,26 +12,82 @@ pub struct Config {
     /// Steam Web API key
     #[serde(default)]
     pub steam_web_api_key: String,
-    
+
     /// Steam ID (required for local/hybrid modes)
     #[serde(default)]
     pub steam_id: String,
-    
+
     /// Server URL for hybrid/remote modes
     #[serde(default)]
     pub server_url: String,
-    
+
     /// GDPR consent status (for hybrid/remote modes)
     #[serde(default)]
     pub gdpr_consent: GdprConsent,
-    
+
     /// Cloud sync JWT token (obtained via Steam OpenID login)
     #[serde(default)]
     pub cloud_token: Option<String>,
-    
+
     /// Debug: output recently played response to file
     #[serde(default)]
     pub debug_recently_played: bool,
+
+    /// Custom font family name (None = use default)
+    #[serde(default)]
+    pub font_family: Option<String>,
+
+    /// Font size in points (default: 14.0)
+    #[serde(default = "default_font_size")]
+    pub font_size: f32,
+
+    /// Window position X (None = system default)
+    #[serde(default)]
+    pub window_x: Option<f32>,
+
+    /// Window position Y (None = system default)
+    #[serde(default)]
+    pub window_y: Option<f32>,
+
+    /// Window width (None = default 1024)
+    #[serde(default)]
+    pub window_width: Option<f32>,
+
+    /// Window height (None = default 768)
+    #[serde(default)]
+    pub window_height: Option<f32>,
+
+    /// Window maximized state
+    #[serde(default)]
+    pub window_maximized: bool,
+
+    /// Game name column width in the games table
+    #[serde(default = "default_name_column_width")]
+    pub name_column_width: f32,
+
+    /// TTB scan delay between games in seconds (default: 60)
+    #[serde(default = "default_ttb_scan_delay_secs")]
+    pub ttb_scan_delay_secs: u64,
+
+    /// Tags scan delay between games in seconds (default: 5)
+    #[serde(default = "default_tags_scan_delay_secs")]
+    pub tags_scan_delay_secs: u64,
+}
+
+fn default_name_column_width() -> f32 {
+    400.0
+}
+
+fn default_font_size() -> f32 {
+    14.0
+}
+
+fn default_ttb_scan_delay_secs() -> u64 {
+    60
+}
+
+fn default_tags_scan_delay_secs() -> u64 {
+    5
 }
 
 impl Default for Config {
@@ -43,6 +99,16 @@ impl Default for Config {
             gdpr_consent: GdprConsent::Unset,
             cloud_token: None,
             debug_recently_played: false,
+            font_family: None,
+            font_size: default_font_size(),
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
+            window_maximized: false,
+            name_column_width: default_name_column_width(),
+            ttb_scan_delay_secs: default_ttb_scan_delay_secs(),
+            tags_scan_delay_secs: default_tags_scan_delay_secs(),
         }
     }
 }
