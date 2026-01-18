@@ -238,4 +238,22 @@ impl GamesTablePlatform for WasmApp {
     fn is_single_game_refreshing(&self, appid: u64) -> bool {
         self.single_game_refreshing == Some(appid)
     }
+    
+    // ============================================================================
+    // TTB (Time To Beat) Methods
+    // ============================================================================
+    
+    fn show_ttb_column(&self) -> bool {
+        // Always show TTB column in WASM
+        true
+    }
+    
+    fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, completion_message: Option<String>) {
+        // Create or update the TTB dialog state
+        self.ttb_dialog_state = Some(overachiever_core::TtbDialogState::new(
+            appid,
+            game_name.to_string(),
+            completion_message,
+        ));
+    }
 }

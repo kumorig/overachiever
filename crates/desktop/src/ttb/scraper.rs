@@ -210,8 +210,21 @@ pub fn search_game(name: &str) -> Result<Vec<HltbResult>, TtbError> {
                 if (seen.has(href)) return;
                 seen.add(href);
                 
-                // Try to find the card container
-                let card = link.closest('li') || link.closest('[class*="Card"]') || link.parentElement?.parentElement?.parentElement;
+                // Try to find the card container - go up several levels to get the full card
+                let card = link.closest('li') || link.closest('[class*="Card"]');
+                if (!card) {
+                    // Go up the DOM tree to find the containing element
+                    let el = link;
+                    for (let i = 0; i < 5; i++) {
+                        el = el.parentElement;
+                        if (!el) break;
+                        // Check if this element contains the heading and time info
+                        if (el.textContent.includes('Main Story') || el.textContent.includes('Hours')) {
+                            card = el;
+                            break;
+                        }
+                    }
+                }
                 if (!card) card = link.parentElement;
                 
                 // Get title - check the link text first, then look for headings
@@ -220,35 +233,60 @@ pub fn search_game(name: &str) -> Result<Vec<HltbResult>, TtbError> {
                 if (h3) {
                     title = h3.textContent.trim();
                 } else {
-                    // Use the link text, clean up time values
+                    // Use the link text, but exclude common labels
                     const linkText = link.textContent || '';
-                    title = linkText.replace(/\d+½?\s*Hours?/gi, '').replace(/Main Story|Main \+ Extra|Completionist/gi, '').trim();
+                    title = linkText.split('\n')[0].trim(); // Take first line
+                    // Remove common time-related text
+                    title = title.replace(/Main Story|Main \+ Extra|Completionist|--/gi, '').trim();
                 }
                 
                 if (!title || title.length < 2) return;
                 
-                // Find times - look in the card or nearby elements
-                let searchArea = card || link.parentElement;
-                const cardText = searchArea?.textContent || '';
+                // Find times - look in the card text
+                const cardText = card?.textContent || link.parentElement?.textContent || '';
                 
-                // Match patterns like "12½ Hours" or "12 Hours"
-                const timeMatches = cardText.match(/(\d+(?:½)?)\s*Hours?/gi) || [];
-                const times = timeMatches.map(t => {
-                    const numMatch = t.match(/(\d+)(½)?/);
-                    if (!numMatch) return 0;
-                    let hours = parseInt(numMatch[1], 10);
-                    if (numMatch[2] === '½') hours += 0.5;
-                    return hours;
-                }).filter(t => t > 0);
+                // Parse times from text like "Main Story3½ Hours" (note: no space before number)
+                // Use word boundary before "Main Story" to avoid matching mid-title
+                // Don't use word boundaries for other patterns since text is concatenated
+                let main = null;
+                let mainExtra = null;
+                let completionist = null;
                 
-                // Get unique times sorted
-                const uniqueTimes = [...new Set(times)].sort((a, b) => a - b);
+                // Match "Main StoryX Hours"
+                const mainMatch = cardText.match(/\bMain Story\s*(\d+(?:½)?)\s*Hours?/i);
+                if (mainMatch && mainMatch[1]) {
+                    const numMatch = mainMatch[1].match(/(\d+)(½)?/);
+                    if (numMatch) {
+                        main = parseInt(numMatch[1], 10);
+                        if (numMatch[2] === '½') main += 0.5;
+                    }
+                }
+                
+                // Match "Main + ExtraX Hours" - no word boundary since text is concatenated
+                const extraMatch = cardText.match(/Main\s*\+\s*Extra\s*(\d+(?:½)?)\s*Hours?/i);
+                if (extraMatch && extraMatch[1]) {
+                    const numMatch = extraMatch[1].match(/(\d+)(½)?/);
+                    if (numMatch) {
+                        mainExtra = parseInt(numMatch[1], 10);
+                        if (numMatch[2] === '½') mainExtra += 0.5;
+                    }
+                }
+                
+                // Match "CompletionistX Hours" - no word boundary since text is concatenated
+                const compMatch = cardText.match(/Completionist\s*(\d+(?:½)?)\s*Hours?/i);
+                if (compMatch && compMatch[1]) {
+                    const numMatch = compMatch[1].match(/(\d+)(½)?/);
+                    if (numMatch) {
+                        completionist = parseInt(numMatch[1], 10);
+                        if (numMatch[2] === '½') completionist += 0.5;
+                    }
+                }
                 
                 results.push({
                     name: title,
-                    main: uniqueTimes[0] || null,
-                    mainExtra: uniqueTimes[1] || null,
-                    completionist: uniqueTimes[2] || null
+                    main: main,
+                    mainExtra: mainExtra,
+                    completionist: completionist
                 });
             });
             
@@ -262,6 +300,8 @@ pub fn search_game(name: &str) -> Result<Vec<HltbResult>, TtbError> {
     let json_str: String = result.value
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .ok_or_else(|| TtbError::Parse(format!("Failed to get search results. Debug: {}", debug_info)))?;
+    
+    ttb_log(&format!("Raw extraction results: {}", json_str));
     
     let parsed: Vec<HltbResult> = serde_json::from_str(&json_str)
         .map_err(|e| TtbError::Parse(format!("{} - Raw: {}", e, json_str)))?;
@@ -278,54 +318,13 @@ pub fn search_game(name: &str) -> Result<Vec<HltbResult>, TtbError> {
 }
 
 /// Calculate string similarity (simple word-based matching)
-fn similarity(a: &str, b: &str) -> f32 {
-    let a_lower = a.to_lowercase();
-    let b_lower = b.to_lowercase();
+#[allow(dead_code)]
 
-    // Exact match
-    if a_lower == b_lower {
-        return 1.0;
-    }
-
-    // Word-based matching
-    let a_words: Vec<&str> = a_lower.split_whitespace().collect();
-    let b_words: Vec<&str> = b_lower.split_whitespace().collect();
-
-    if a_words.is_empty() || b_words.is_empty() {
-        return 0.0;
-    }
-
-    let matches = a_words.iter().filter(|w| b_words.contains(w)).count();
-    let total = a_words.len().max(b_words.len());
-
-    matches as f32 / total as f32
-}
 
 /// Find best matching game from search results
-pub fn find_best_match(game_name: &str, results: &[HltbResult]) -> Option<HltbResult> {
-    if results.is_empty() {
-        return None;
-    }
-
-    // Find the entry with highest similarity
-    let mut best_match: Option<&HltbResult> = None;
-    let mut best_score: f32 = 0.0;
-
-    for entry in results {
-        let score = similarity(game_name, &entry.name);
-        if score > best_score {
-            best_score = score;
-            best_match = Some(entry);
-        }
-    }
-
-    // Only return if similarity is above threshold
-    if best_score >= 0.4 {
-        best_match.cloned()
-    } else {
-        // Fall back to first result if search returned results
-        results.first().cloned()
-    }
+pub fn find_best_match(_game_name: &str, results: &[HltbResult]) -> Option<HltbResult> {
+    // HLTB search orders results by relevance, so just use the first one
+    results.first().cloned()
 }
 
 /// Fetch TTB times for a game by name
@@ -338,6 +337,9 @@ pub fn fetch_ttb_times_with_query(appid: u64, match_name: &str, search_query: &s
     let results = search_game(search_query)?;
 
     let entry = find_best_match(match_name, &results).ok_or(TtbError::NotFound)?;
+    
+    ttb_log(&format!("Best match for '{}': '{}' (main={:?}, extra={:?}, comp={:?})", 
+        match_name, entry.name, entry.main, entry.main_extra, entry.completionist));
 
     Ok(TtbTimes {
         appid,
@@ -348,14 +350,3 @@ pub fn fetch_ttb_times_with_query(appid: u64, match_name: &str, search_query: &s
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_similarity() {
-        assert_eq!(similarity("The Witcher 3", "The Witcher 3"), 1.0);
-        assert!(similarity("Witcher 3", "The Witcher 3") > 0.5);
-        assert!(similarity("completely different", "The Witcher 3") < 0.3);
-    }
-}

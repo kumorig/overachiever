@@ -32,7 +32,7 @@ try {
 
     # Create remote directories
     Write-Host "Creating remote directories..." -ForegroundColor Cyan
-    plink -batch tatsugo "sudo mkdir -p $remoteWebPath && sudo mkdir -p $remoteBackendPath && sudo mkdir -p $remoteSrcPath && mkdir -p /tmp/overachiever_web"
+    plink -no-antispoof tatsugo "sudo mkdir -p $remoteWebPath && sudo mkdir -p $remoteBackendPath && sudo mkdir -p $remoteSrcPath && mkdir -p /tmp/overachiever_web"
 
     # Deploy WASM frontend
     Write-Host "Copying WASM files..." -ForegroundColor Cyan
@@ -48,7 +48,7 @@ try {
     # Use server-specific Cargo.toml that only includes core and backend
     pscp -batch "$ScriptDir\server\Cargo.server.toml" "tatsugo:$remoteSrcPath/Cargo.toml"
     pscp -batch "Cargo.lock" "tatsugo:$remoteSrcPath/"
-    plink -batch tatsugo "mkdir -p $remoteSrcPath/crates"
+    plink -no-antispoof tatsugo "mkdir -p $remoteSrcPath/crates"
     pscp -batch -r crates/core "tatsugo:$remoteSrcPath/crates/"
     pscp -batch -r crates/backend "tatsugo:$remoteSrcPath/crates/"
 
@@ -61,7 +61,7 @@ try {
     Write-Host "Building backend on server (this may take a while on first run)..." -ForegroundColor Cyan
     
     # Source cargo env and build
-    plink -batch tatsugo "source ~/.cargo/env && cd $remoteSrcPath && cargo build --release -p overachiever-backend"
+    plink -no-antispoof tatsugo "source ~/.cargo/env && cd $remoteSrcPath && cargo build --release -p overachiever-backend"
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Backend build failed!" -ForegroundColor Red
@@ -71,23 +71,23 @@ try {
     Write-Host "Deploying files..." -ForegroundColor Cyan
     
     # Deploy WASM files
-    plink -batch tatsugo "sudo rm -rf $remoteWebPath/* && sudo mv /tmp/overachiever_web/* $remoteWebPath/ && sudo rmdir /tmp/overachiever_web 2>/dev/null || true && sudo chown -R www-data:www-data $remoteWebPath"
+    plink -no-antispoof tatsugo "sudo rm -rf $remoteWebPath/* && sudo mv /tmp/overachiever_web/* $remoteWebPath/ && sudo rmdir /tmp/overachiever_web 2>/dev/null || true && sudo chown -R www-data:www-data $remoteWebPath"
     
     # Stop service before copying binary (to avoid "Text file busy" error)
-    plink -batch tatsugo "sudo systemctl stop overachiever-backend 2>/dev/null || true"
+    plink -no-antispoof tatsugo "sudo systemctl stop overachiever-backend 2>/dev/null || true"
     
     # Deploy backend binary
-    plink -batch tatsugo "sudo cp $remoteSrcPath/target/release/overachiever-server $remoteBackendPath/ && sudo chmod +x $remoteBackendPath/overachiever-server"
+    plink -no-antispoof tatsugo "sudo cp $remoteSrcPath/target/release/overachiever-server $remoteBackendPath/ && sudo chmod +x $remoteBackendPath/overachiever-server"
     
     # Ensure STEAM_CALLBACK_URL is set in .env
     Write-Host "Checking environment configuration..." -ForegroundColor Cyan
-    plink -batch tatsugo "grep -q 'STEAM_CALLBACK_URL' $remoteBackendPath/.env 2>/dev/null || echo 'STEAM_CALLBACK_URL=https://overachiever.space/auth/steam/callback' | sudo tee -a $remoteBackendPath/.env > /dev/null"
+    plink -no-antispoof tatsugo "grep -q 'STEAM_CALLBACK_URL' $remoteBackendPath/.env 2>/dev/null || echo 'STEAM_CALLBACK_URL=https://overachiever.space/auth/steam/callback' | sudo tee -a $remoteBackendPath/.env > /dev/null"
     
     # Start backend service
-    plink -batch tatsugo "sudo systemctl start overachiever-backend 2>/dev/null || echo 'Service not yet configured'"
+    plink -no-antispoof tatsugo "sudo systemctl start overachiever-backend 2>/dev/null || echo 'Service not yet configured'"
     
     # Reload nginx
-    plink -batch tatsugo "sudo nginx -t && sudo systemctl reload nginx"
+    plink -no-antispoof tatsugo "sudo nginx -t && sudo systemctl reload nginx"
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Build/deployment on server failed!" -ForegroundColor Red

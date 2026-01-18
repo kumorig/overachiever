@@ -126,11 +126,3 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::err
     )?;
     Ok(token_data.claims)
 }
-
-pub fn create_jwt(claims: &Claims, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
-    encode(
-        &Header::default(),
-        claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
-    )
-}

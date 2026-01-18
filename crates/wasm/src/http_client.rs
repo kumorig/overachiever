@@ -189,3 +189,25 @@ pub async fn fetch_build_info() -> Result<BuildInfo, String> {
         .await
         .map_err(|e| format!("Failed to parse build info: {}", e))
 }
+
+/// Fetch list of all users from the backend
+pub async fn fetch_all_users(server_url: &str) -> Result<Vec<overachiever_core::UserProfile>, String> {
+    // Convert WebSocket URL to HTTP
+    let http_url = server_url.replace("ws://", "http://").replace("wss://", "https://");
+    let base_url = http_url.trim_end_matches("/ws");
+    let url = format!("{}/api/users", base_url);
+    
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch users: {}", e))?;
+    
+    if !response.ok() {
+        return Err(format!("Failed to fetch users (status {})", response.status()));
+    }
+    
+    response
+        .json::<Vec<overachiever_core::UserProfile>>()
+        .await
+        .map_err(|e| format!("Failed to parse users: {}", e))
+}

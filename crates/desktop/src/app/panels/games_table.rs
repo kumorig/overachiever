@@ -244,6 +244,15 @@ impl GamesTablePlatform for SteamOverachieverApp {
         SteamOverachieverApp::remove_from_ttb_blacklist(self, appid);
     }
 
+    fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, completion_message: Option<String>) {
+        // Create or update the TTB dialog state
+        self.ttb_dialog_state = Some(overachiever_core::TtbDialogState::new(
+            appid,
+            game_name.to_string(),
+            completion_message,
+        ));
+    }
+
     fn name_column_width(&self) -> f32 {
         self.config.name_column_width
     }
@@ -299,30 +308,6 @@ impl GamesTablePlatform for SteamOverachieverApp {
 
     fn is_fetching_tags(&self, appid: u64) -> bool {
         self.tags_fetching == Some(appid)
-    }
-
-    fn tag_search_selected_index(&self) -> Option<usize> {
-        self.tag_search_selected_index
-    }
-
-    fn set_tag_search_selected_index(&mut self, index: Option<usize>) {
-        self.tag_search_selected_index = index;
-    }
-
-    fn tag_filter_mode_and(&self) -> bool {
-        self.tag_filter_mode_and
-    }
-
-    fn set_tag_filter_mode_and(&mut self, and_mode: bool) {
-        self.tag_filter_mode_and = and_mode;
-    }
-
-    fn selected_vote_tag_index(&self) -> Option<usize> {
-        self.selected_vote_tag_index
-    }
-
-    fn set_selected_vote_tag_index(&mut self, index: Option<usize>) {
-        self.selected_vote_tag_index = index;
     }
 }
 

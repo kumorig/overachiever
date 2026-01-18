@@ -1,5 +1,5 @@
 === Recently Played API Debug ===
-Timestamp: 2025-12-30 20:41:23
+Timestamp: 2026-01-18 14:04:45
 Steam ID: 76561197975373553
 API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
 
@@ -11,127 +11,149 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "appid": 1197260,
         "img_icon_url": "3d690572671758c1a506c9d4f1bc6176d6569af6",
         "name": "The Perfect Tower II",
-        "playtime_2weeks": 4886,
+        "playtime_2weeks": 3784,
         "playtime_deck_forever": 0,
-        "playtime_forever": 19109,
+        "playtime_forever": 26244,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 19109
+        "playtime_windows_forever": 26244
       },
       {
-        "appid": 1318690,
-        "img_icon_url": "974fc8a55e4191dfb390f59a24cb2f1900393533",
-        "name": "shapez",
-        "playtime_2weeks": 1114,
+        "appid": 1552080,
+        "img_icon_url": "0c3ed5ac438851c625c7d9df75ab548193c94b29",
+        "name": "Deepest Chamber: Resurrection",
+        "playtime_2weeks": 754,
         "playtime_deck_forever": 0,
-        "playtime_forever": 3667,
+        "playtime_forever": 754,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 3667
+        "playtime_windows_forever": 754
+      },
+      {
+        "appid": 2680010,
+        "img_icon_url": "6b814f92e25cec848c9729ce26c8f39afcc6e5f7",
+        "name": "The First Berserker: Khazan",
+        "playtime_2weeks": 423,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 556,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 556
       },
       {
         "appid": 2225960,
         "img_icon_url": "f217e83bf2068cf5b9edef3008db2ce588f1dc19",
         "name": "Noobs Are Coming",
-        "playtime_2weeks": 484,
+        "playtime_2weeks": 296,
         "playtime_deck_forever": 0,
-        "playtime_forever": 484,
+        "playtime_forever": 780,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 484
+        "playtime_windows_forever": 780
       },
       {
-        "appid": 3330280,
-        "img_icon_url": "34b320b7389db1ad1e964cb5a6bf99bbe7c4a1fc",
-        "name": "Free Solitaire",
-        "playtime_2weeks": 284,
+        "appid": 2019810,
+        "img_icon_url": "549ff8f113021066fea1d088b438a5c72621798a",
+        "name": "Boxes",
+        "playtime_2weeks": 275,
         "playtime_deck_forever": 0,
-        "playtime_forever": 711,
+        "playtime_forever": 275,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 711
+        "playtime_windows_forever": 275
       },
       {
-        "appid": 1037020,
-        "img_icon_url": "67eb67ba238ae0dcf4a8d03c18d3aef008e1b32a",
-        "name": "ScourgeBringer",
-        "playtime_2weeks": 230,
+        "appid": 2178990,
+        "img_icon_url": "5b93d3b389a20ac26347a4837aa86a0d22ba300e",
+        "name": "Sodaman",
+        "playtime_2weeks": 168,
         "playtime_deck_forever": 0,
-        "playtime_forever": 230,
+        "playtime_forever": 168,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 230
+        "playtime_windows_forever": 168
       },
       {
-        "appid": 2694490,
-        "img_icon_url": "fa8ff2005f65d0cbc7403a5b18ca77c0bbc9d05a",
-        "name": "Path of Exile 2",
-        "playtime_2weeks": 125,
+        "appid": 1192640,
+        "img_icon_url": "9a7588af45199d5cd9d18ff114026e546d750e48",
+        "name": "Mosaique Neko Waifus",
+        "playtime_2weeks": 99,
         "playtime_deck_forever": 0,
-        "playtime_forever": 24987,
+        "playtime_forever": 101,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 24987
+        "playtime_windows_forever": 101
       },
       {
-        "appid": 427520,
-        "img_icon_url": "267f5a89f36ab287e600a4e7d4e73d3d11f0fd7d",
-        "name": "Factorio",
-        "playtime_2weeks": 90,
+        "appid": 250820,
+        "img_icon_url": "7f286d5ee22905b51663e0cea505e1c2f7500f36",
+        "name": "SteamVR",
+        "playtime_2weeks": 56,
         "playtime_deck_forever": 0,
-        "playtime_forever": 11047,
+        "playtime_forever": 3114,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 90
+        "playtime_windows_forever": 3114
       },
       {
-        "appid": 3444020,
-        "img_icon_url": "313c4fe53c583a3b633b555b94d5cf5c77a1bbd0",
-        "name": "我在地府打麻将",
-        "playtime_2weeks": 55,
+        "appid": 612390,
+        "img_icon_url": "c64bcd654c0854f70273b2ccc00096cc68747130",
+        "name": "Dandara: Trials of Fear Edition",
+        "playtime_2weeks": 53,
+        "playtime_deck_forever": 0,
+        "playtime_forever": 119,
+        "playtime_linux_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_windows_forever": 119
+      },
+      {
+        "appid": 567290,
+        "img_icon_url": "3be452c3cb04456c131ca8e5448b692afbef515b",
+        "name": "Slash It",
+        "playtime_2weeks": 51,
         "playtime_deck_forever": 0,
         "playtime_forever": 55,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 55
+        "playtime_windows_forever": 52
       },
       {
-        "appid": 732430,
-        "img_icon_url": "118693f05c0c0fc0f69d42e3fbb200a733516c3e",
-        "name": "Superflight",
-        "playtime_2weeks": 49,
+        "appid": 1817000,
+        "img_icon_url": "a0d3bc0544757d0c37df59bc75e0a28917088844",
+        "name": "Zodiacats",
+        "playtime_2weeks": 42,
         "playtime_deck_forever": 0,
-        "playtime_forever": 49,
+        "playtime_forever": 42,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 49
+        "playtime_windows_forever": 42
       },
       {
-        "appid": 1434540,
-        "img_icon_url": "2674d45b0f6f7f8c3db016c6078bbb9c99e4f033",
-        "name": "Zoeti",
-        "playtime_2weeks": 43,
+        "appid": 1289310,
+        "img_icon_url": "c4cfc91850d08836a6b49bc0509f7b0e3e17ffa4",
+        "name": "Helltaker",
+        "playtime_2weeks": 40,
         "playtime_deck_forever": 0,
-        "playtime_forever": 43,
+        "playtime_forever": 50,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 43
+        "playtime_windows_forever": 50
       },
       {
-        "appid": 206420,
-        "img_icon_url": "211c502e385781a17b4d02cad7a3ef53f09f1e91",
-        "name": "Saints Row IV",
-        "playtime_2weeks": 25,
+        "appid": 743640,
+        "img_icon_url": "33db869902669157ee0878b8fa4fcf4be8d7bd71",
+        "name": "Achievement Clicker",
+        "playtime_2weeks": 31,
         "playtime_deck_forever": 0,
-        "playtime_forever": 25,
+        "playtime_forever": 162,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 25
+        "playtime_windows_forever": 162
       },
       {
-        "appid": 896440,
-        "img_icon_url": "698eb339f48ab0949d566056790bfe5e53f0de1b",
-        "name": "Eternal Edge",
+        "appid": 301690,
+        "img_icon_url": "dfed387651076ca7b02933d894b674f4726df9b5",
+        "name": "Cobi Treasure Deluxe",
         "playtime_2weeks": 20,
         "playtime_deck_forever": 0,
         "playtime_forever": 20,
@@ -140,82 +162,84 @@ API URL: https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/
         "playtime_windows_forever": 20
       },
       {
-        "appid": 1428100,
-        "img_icon_url": "241fe1368e67309c721c44f0f23a6964c8d1d946",
-        "name": "Instruments of Destruction",
-        "playtime_2weeks": 18,
+        "appid": 319540,
+        "img_icon_url": "c035355b230615598d9a032a3a0d3eba546273d2",
+        "name": "A Year Of Rain",
+        "playtime_2weeks": 1,
         "playtime_deck_forever": 0,
-        "playtime_forever": 18,
+        "playtime_forever": 1,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 18
+        "playtime_windows_forever": 1
       },
       {
-        "appid": 1306630,
-        "img_icon_url": "a8659c31338c183bde406c0bd6d00f55bbab4b6e",
-        "name": "Lost Ruins",
-        "playtime_2weeks": 17,
+        "appid": 2543050,
+        "img_icon_url": "f138c13b36b122c0c1c1d52a7e82bf945af2a7b1",
+        "name": "Anon's Neko Waifus",
+        "playtime_2weeks": 1,
         "playtime_deck_forever": 0,
-        "playtime_forever": 17,
+        "playtime_forever": 1,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 17
+        "playtime_windows_forever": 1
       },
       {
-        "appid": 1150530,
-        "img_icon_url": "0acf71d6e95b0a2b5a6f58d80ed4688978936c26",
-        "name": "Wizard with a Gun",
-        "playtime_2weeks": 10,
+        "appid": 1836120,
+        "img_icon_url": "20cd84a07562ab0d83b43ad58be8b97206297cda",
+        "name": "QUICKERFLAK",
+        "playtime_2weeks": 1,
         "playtime_deck_forever": 0,
-        "playtime_forever": 10,
+        "playtime_forever": 1,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 10
+        "playtime_windows_forever": 1
       },
       {
-        "appid": 2545740,
-        "img_icon_url": "3ba51f6e703e463dbd13f76007d47b748a7323b5",
-        "name": "Hive Jump 2: Survivors",
-        "playtime_2weeks": 4,
+        "appid": 457320,
+        "img_icon_url": "f2ecdb26d96a88fc35dff593149da5d8ea916bba",
+        "name": "HoloBall",
+        "playtime_2weeks": 1,
         "playtime_deck_forever": 0,
-        "playtime_forever": 4,
+        "playtime_forever": 1,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 4
+        "playtime_windows_forever": 1
       },
       {
-        "appid": 1135810,
-        "img_icon_url": "391b79014ccae4c5af5b8cf3a533eca1f245403d",
-        "name": "Vault of the Void",
-        "playtime_2weeks": 3,
+        "appid": 359190,
+        "img_icon_url": "bd8e491cf43f47aa0d55519bffb93d7d3dd517c8",
+        "name": "Rituals",
+        "playtime_2weeks": 1,
         "playtime_deck_forever": 0,
-        "playtime_forever": 3,
+        "playtime_forever": 7,
         "playtime_linux_forever": 0,
         "playtime_mac_forever": 0,
-        "playtime_windows_forever": 3
+        "playtime_windows_forever": 1
       }
     ],
-    "total_count": 17
+    "total_count": 19
   }
 }
 
 === Games List ===
-Total games in response: 17
+Total games in response: 19
 
-1. The Perfect Tower II (appid: 1197260) - 2 weeks: 4886 min, total: 19109 min
-2. shapez (appid: 1318690) - 2 weeks: 1114 min, total: 3667 min
-3. Noobs Are Coming (appid: 2225960) - 2 weeks: 484 min, total: 484 min
-4. Free Solitaire (appid: 3330280) - 2 weeks: 284 min, total: 711 min
-5. ScourgeBringer (appid: 1037020) - 2 weeks: 230 min, total: 230 min
-6. Path of Exile 2 (appid: 2694490) - 2 weeks: 125 min, total: 24987 min
-7. Factorio (appid: 427520) - 2 weeks: 90 min, total: 11047 min
-8. 我在地府打麻将 (appid: 3444020) - 2 weeks: 55 min, total: 55 min
-9. Superflight (appid: 732430) - 2 weeks: 49 min, total: 49 min
-10. Zoeti (appid: 1434540) - 2 weeks: 43 min, total: 43 min
-11. Saints Row IV (appid: 206420) - 2 weeks: 25 min, total: 25 min
-12. Eternal Edge (appid: 896440) - 2 weeks: 20 min, total: 20 min
-13. Instruments of Destruction (appid: 1428100) - 2 weeks: 18 min, total: 18 min
-14. Lost Ruins (appid: 1306630) - 2 weeks: 17 min, total: 17 min
-15. Wizard with a Gun (appid: 1150530) - 2 weeks: 10 min, total: 10 min
-16. Hive Jump 2: Survivors (appid: 2545740) - 2 weeks: 4 min, total: 4 min
-17. Vault of the Void (appid: 1135810) - 2 weeks: 3 min, total: 3 min
+1. The Perfect Tower II (appid: 1197260) - 2 weeks: 3784 min, total: 26244 min
+2. Deepest Chamber: Resurrection (appid: 1552080) - 2 weeks: 754 min, total: 754 min
+3. The First Berserker: Khazan (appid: 2680010) - 2 weeks: 423 min, total: 556 min
+4. Noobs Are Coming (appid: 2225960) - 2 weeks: 296 min, total: 780 min
+5. Boxes (appid: 2019810) - 2 weeks: 275 min, total: 275 min
+6. Sodaman (appid: 2178990) - 2 weeks: 168 min, total: 168 min
+7. Mosaique Neko Waifus (appid: 1192640) - 2 weeks: 99 min, total: 101 min
+8. SteamVR (appid: 250820) - 2 weeks: 56 min, total: 3114 min
+9. Dandara: Trials of Fear Edition (appid: 612390) - 2 weeks: 53 min, total: 119 min
+10. Slash It (appid: 567290) - 2 weeks: 51 min, total: 55 min
+11. Zodiacats (appid: 1817000) - 2 weeks: 42 min, total: 42 min
+12. Helltaker (appid: 1289310) - 2 weeks: 40 min, total: 50 min
+13. Achievement Clicker (appid: 743640) - 2 weeks: 31 min, total: 162 min
+14. Cobi Treasure Deluxe (appid: 301690) - 2 weeks: 20 min, total: 20 min
+15. A Year Of Rain (appid: 319540) - 2 weeks: 1 min, total: 1 min
+16. Anon's Neko Waifus (appid: 2543050) - 2 weeks: 1 min, total: 1 min
+17. QUICKERFLAK (appid: 1836120) - 2 weeks: 1 min, total: 1 min
+18. HoloBall (appid: 457320) - 2 weeks: 1 min, total: 1 min
+19. Rituals (appid: 359190) - 2 weeks: 1 min, total: 7 min

@@ -35,6 +35,18 @@ pub struct Game {
     pub achievements_total: Option<i32>,
     pub achievements_unlocked: Option<i32>,
     pub last_achievement_scrape: Option<DateTime<Utc>>,
+    
+    // User-reported TTB data (averaged from community)
+    pub avg_user_ttb_main_seconds: Option<i32>,
+    pub avg_user_ttb_extra_seconds: Option<i32>,
+    pub avg_user_ttb_completionist_seconds: Option<i32>,
+    pub user_ttb_report_count: i32,
+    
+    // Current user's own TTB report (WASM/Remote) or single user's report (Desktop)
+    pub my_ttb_main_seconds: Option<i32>,
+    pub my_ttb_extra_seconds: Option<i32>,
+    pub my_ttb_completionist_seconds: Option<i32>,
+    pub my_ttb_reported_at: Option<DateTime<Utc>>,
 }
 
 impl Game {
@@ -87,6 +99,9 @@ pub struct GameAchievement {
     pub icon_gray: String,
     pub achieved: bool,
     pub unlocktime: Option<DateTime<Utc>>,
+    /// Whether this achievement marks game completion for the user
+    #[serde(default)]
+    pub is_game_finishing: bool,
 }
 
 /// Run history entry

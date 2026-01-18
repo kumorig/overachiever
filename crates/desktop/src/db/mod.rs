@@ -122,6 +122,12 @@ fn init_tables(conn: &Connection) -> Result<()> {
 
     // Migration: migrate old achievements table
     migrate_achievements_table(conn)?;
+    
+    // Migration: add user TTB fields to games table
+    migrate_add_user_ttb_fields(conn)?;
+    
+    // Migration: add is_game_finishing to achievements table
+    migrate_add_game_finishing(conn)?;
 
     // First plays table with steam_id
     conn.execute(
@@ -359,6 +365,80 @@ fn migrate_add_unplayed_games_total(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Add user TTB columns to games table
+fn migrate_add_user_ttb_fields(conn: &Connection) -> Result<()> {
+    // Check if my_ttb_main_seconds column exists
+    let has_ttb: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'my_ttb_main_seconds'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_ttb {
+        // Add user TTB report columns (for desktop, these are the single user's reports)
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_main_seconds INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_extra_seconds INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_completionist_seconds INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_reported_at TEXT",
+            [],
+        );
+        
+        // Also add average fields for consistency with backend (will be populated from cloud sync)
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN avg_user_ttb_main_seconds INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN avg_user_ttb_extra_seconds INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN avg_user_ttb_completionist_seconds INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN user_ttb_report_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+    }
+
+    Ok(())
+}
+
+/// Add is_game_finishing column to achievements table
+fn migrate_add_game_finishing(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('achievements') WHERE name = 'is_game_finishing'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        let _ = conn.execute(
+            "ALTER TABLE achievements ADD COLUMN is_game_finishing INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+    }
+
+    Ok(())
+}
+
 /// Update migrated data with the actual steam_id
 pub fn finalize_migration(conn: &Connection, steam_id: &str) -> Result<()> {
     conn.execute(
@@ -413,6 +493,7 @@ pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> R
                 }
             }
         }
+
         
         conn.execute(
             "INSERT INTO games (steam_id, appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at)
@@ -420,7 +501,7 @@ pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> R
              ON CONFLICT(steam_id, appid) DO UPDATE SET
              name = excluded.name,
              playtime_forever = excluded.playtime_forever,
-             rtime_last_played = excluded.rtime_last_played,
+             rtime_last_played = COALESCE(excluded.rtime_last_played, games.rtime_last_played),
              img_icon_url = excluded.img_icon_url",
             (
                 steam_id,
@@ -432,6 +513,7 @@ pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> R
                 &now,
             ),
         )?;
+
     }
     Ok(())
 }
@@ -466,6 +548,14 @@ pub fn get_all_games(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
             achievements_total: row.get(6)?,
             achievements_unlocked: row.get(7)?,
             last_achievement_scrape,
+            avg_user_ttb_main_seconds: None,
+            avg_user_ttb_extra_seconds: None,
+            avg_user_ttb_completionist_seconds: None,
+            user_ttb_report_count: 0,
+            my_ttb_main_seconds: None,
+            my_ttb_extra_seconds: None,
+            my_ttb_completionist_seconds: None,
+            my_ttb_reported_at: None,
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -516,6 +606,14 @@ pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -
             achievements_total: row.get(6)?,
             achievements_unlocked: row.get(7)?,
             last_achievement_scrape: None,
+            avg_user_ttb_main_seconds: None,
+            avg_user_ttb_extra_seconds: None,
+            avg_user_ttb_completionist_seconds: None,
+            user_ttb_report_count: 0,
+            my_ttb_main_seconds: None,
+            my_ttb_extra_seconds: None,
+            my_ttb_completionist_seconds: None,
+            my_ttb_reported_at: None,
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -713,6 +811,7 @@ pub fn get_game_achievements(conn: &Connection, steam_id: &str, appid: u64) -> R
             icon_gray: row.get(5)?,
             achieved: row.get::<_, i32>(6)? == 1,
             unlocktime,
+            is_game_finishing: false,
         })
     })?.collect::<Result<Vec<_>>>()?;
     

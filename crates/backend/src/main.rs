@@ -111,6 +111,8 @@ async fn main() {
         // Auth
         .route("/auth/steam", get(auth::steam_login))
         .route("/auth/steam/callback", get(auth::steam_callback))
+        // User list
+        .route("/api/users", get(routes::get_all_users))
         .with_state(state)
         .layer(CorsLayer::new()
             .allow_origin(Any)

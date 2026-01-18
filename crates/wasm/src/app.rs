@@ -106,6 +106,12 @@ pub struct WasmApp {
     
     // Single game refresh state: appid of game being refreshed
     pub(crate) single_game_refreshing: Option<u64>,
+    
+    // TTB reporting dialog state
+    pub(crate) ttb_dialog_state: Option<overachiever_core::TtbDialogState>,
+    
+    // List of all users (for display on login screen)
+    pub(crate) all_users: Rc<RefCell<Vec<UserProfile>>>,
 }
 
 impl WasmApp {
@@ -176,10 +182,15 @@ impl WasmApp {
             needs_scroll_to_target: false,
             log_selected_achievement: None,
             single_game_refreshing: None,
+            ttb_dialog_state: None,
+            all_users: Rc::new(RefCell::new(Vec::new())),
         };
         
         // Fetch build info asynchronously
         app.fetch_build_info();
+        
+        // Fetch user list for login screen
+        app.fetch_all_users();
         
         // Auto-connect on startup
         app.connect();
@@ -201,6 +212,23 @@ impl WasmApp {
                 }
                 Err(e) => {
                     web_sys::console::log_1(&format!("Failed to fetch build info: {}", e).into());
+                }
+            }
+        });
+    }
+    
+    /// Fetch list of all users (for login screen display)
+    fn fetch_all_users(&mut self) {
+        let all_users = self.all_users.clone();
+        let server_url = self.server_url.clone();
+        
+        wasm_bindgen_futures::spawn_local(async move {
+            match crate::http_client::fetch_all_users(&server_url).await {
+                Ok(users) => {
+                    *all_users.borrow_mut() = users;
+                }
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Failed to fetch users: {}", e).into());
                 }
             }
         });
@@ -347,6 +375,13 @@ impl WasmApp {
                     self.app_state = AppState::Idle;
                     self.scan_progress = None;
                     self.status = format!("Error: {}", message);
+                    
+                    // Force reload on JWT expiration
+                    if message.contains("Expired Signature") || message.contains("ExpiredSignature") {
+                        if let Some(window) = web_sys::window() {
+                            let _ = window.location().reload();
+                        }
+                    }
                 }
                 overachiever_core::ServerMessage::SyncProgress { state } => {
                     match state {
@@ -420,6 +455,23 @@ impl WasmApp {
                     self.status = format!("User not found: {}", short_id);
                     self.connection_state = ConnectionState::Error(format!("User '{}' not found", short_id));
                 }
+                overachiever_core::ServerMessage::TtbReported { appid, game } => {
+                    // Update the game in our list with new TTB data
+                    if let Some(g) = self.games.iter_mut().find(|g| g.appid == appid) {
+                        *g = game;
+                    }
+                    self.status = "TTB report submitted successfully!".to_string();
+                    // Re-sort games in case TTB was the sort column
+                    sort_games(&mut self.games, self.sort_column, self.sort_order);
+                }
+                overachiever_core::ServerMessage::ShowTtbDialog { appid, game_name, completion_message } => {
+                    // Auto-trigger TTB dialog (e.g., on 100% completion)
+                    self.ttb_dialog_state = Some(overachiever_core::TtbDialogState::new(
+                        appid,
+                        game_name,
+                        completion_message,
+                    ));
+                }
                 _ => {}
             }
         }
@@ -473,5 +525,8 @@ impl eframe::App for WasmApp {
         
         // Show GDPR modal if consent not set (implemented in gdpr.rs)
         self.render_gdpr_modal(ctx);
+        
+        // Show TTB reporting dialog if open (implemented in panels.rs)
+        self.render_ttb_dialog(ctx);
     }
 }

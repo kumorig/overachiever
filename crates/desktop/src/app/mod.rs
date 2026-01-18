@@ -127,11 +127,15 @@ pub struct SteamOverachieverApp {
     // Last time we fetched tags (for rate limiting)
     pub(crate) tags_last_fetch: Option<Instant>,
     // Tag search dropdown keyboard navigation - selected index
+    #[allow(dead_code)]
     pub(crate) tag_search_selected_index: Option<usize>,
     // Tag filter mode: AND (all tags required) or OR (any tag matches)
+    #[allow(dead_code)]
     pub(crate) tag_filter_mode_and: bool,
     // Selected tag index for vote column display (default 0 = first tag)
     pub(crate) selected_vote_tag_index: Option<usize>,
+    // TTB reporting dialog state
+    pub(crate) ttb_dialog_state: Option<overachiever_core::TtbDialogState>,
 }
 
 /// Settings tab selection
@@ -273,6 +277,7 @@ impl SteamOverachieverApp {
             tag_search_selected_index: None,
             tag_filter_mode_and: true,
             selected_vote_tag_index: None,
+            ttb_dialog_state: None,
         };
         
         // Apply consistent sorting after loading from database
@@ -365,6 +370,9 @@ impl eframe::App for SteamOverachieverApp {
 
         // Show TTB search dialog if pending
         self.render_ttb_search_dialog(ctx);
+        
+        // Show TTB reporting dialog if open
+        self.render_ttb_reporting_dialog(ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -467,6 +475,126 @@ impl SteamOverachieverApp {
         } else {
             // Keep dialog open
             self.ttb_search_pending = Some((appid, game_name, search_query));
+        }
+    }
+
+    /// Render the TTB reporting dialog
+    fn render_ttb_reporting_dialog(&mut self, ctx: &egui::Context) {
+        let dialog_state = match self.ttb_dialog_state.as_mut() {
+            Some(state) if state.is_open => state,
+            _ => {
+                self.ttb_dialog_state = None;
+                return;
+            }
+        };
+
+        let mut submitted = false;
+        let mut cancelled = false;
+        
+        egui::Window::new("Report Time to Beat")
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.set_min_width(400.0);
+                
+                // Show completion message if present
+                if let Some(ref msg) = dialog_state.completion_message {
+                    ui.label(egui::RichText::new(msg).strong().color(egui::Color32::from_rgb(100, 255, 100)));
+                    ui.add_space(8.0);
+                }
+                
+                ui.label(egui::RichText::new(format!("Game: {}", dialog_state.game_name)).strong());
+                ui.add_space(8.0);
+                
+                ui.label("Enter your completion times (leave blank if you haven't completed that mode):");
+                ui.add_space(8.0);
+                
+                // Main story
+                ui.horizontal(|ui| {
+                    ui.label("Main Story:");
+                    ui.add_space(4.0);
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_minutes).desired_width(50.0));
+                    ui.label("m");
+                });
+                
+                // Main + Extras
+                ui.horizontal(|ui| {
+                    ui.label("Main + Extras:");
+                    ui.add_space(4.0);
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_minutes).desired_width(50.0));
+                    ui.label("m");
+                });
+                
+                // 100% Completionist
+                ui.horizontal(|ui| {
+                    ui.label("100% Completionist:");
+                    ui.add_space(4.0);
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_minutes).desired_width(50.0));
+                    ui.label("m");
+                });
+                
+                ui.add_space(16.0);
+                
+                // Buttons
+                ui.horizontal(|ui| {
+                    if ui.button("Submit").clicked() {
+                        submitted = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                });
+            });
+
+        if cancelled {
+            self.ttb_dialog_state = None;
+        } else if submitted {
+            // Get the values and save
+            let appid = dialog_state.appid;
+            
+            // Save to local database
+            if let Ok(conn) = crate::db::open_connection() {
+                let (main_secs, extra_secs, comp_secs) = dialog_state.get_times();
+                let timestamp = chrono::Utc::now();
+                
+                // Update the game record with TTB data
+                let result = conn.execute(
+                    "UPDATE games SET 
+                        my_ttb_main_seconds = ?1,
+                        my_ttb_extra_seconds = ?2,
+                        my_ttb_completionist_seconds = ?3,
+                        my_ttb_reported_at = ?4
+                    WHERE appid = ?5 AND steam_id = ?6",
+                    rusqlite::params![
+                        main_secs,
+                        extra_secs,
+                        comp_secs,
+                        timestamp.to_rfc3339(),
+                        appid as i64,
+                        &self.config.steam_id,
+                    ],
+                );
+                
+                if let Err(e) = result {
+                    eprintln!("Failed to save TTB report: {}", e);
+                    self.status = format!("Failed to save TTB report: {}", e);
+                } else {
+                    // Reload games to get updated TTB data
+                    if let Ok(games) = crate::db::get_all_games(&conn, &self.config.steam_id) {
+                        self.games = games;
+                    }
+                    self.status = "TTB report saved successfully".to_string();
+                }
+            }
+            
+            // Close dialog
+            self.ttb_dialog_state = None;
         }
     }
 }

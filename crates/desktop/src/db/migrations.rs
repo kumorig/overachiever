@@ -212,3 +212,85 @@ pub fn finalize_migration(conn: &Connection, steam_id: &str) -> Result<()> {
     )?;
     Ok(())
 }
+
+/// Add user TTB columns to games table
+pub fn migrate_add_user_ttb_fields(conn: &Connection) -> Result<()> {
+    // Check if my_ttb_main_seconds column exists
+    let has_ttb: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'my_ttb_main_seconds'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_ttb {
+        eprintln!("Running TTB migration: adding user TTB fields to games table");
+        // Add user TTB report columns (for desktop, these are the single user's reports)
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_main_seconds INTEGER",
+            [],
+        )?;
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_extra_seconds INTEGER",
+            [],
+        )?;
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_completionist_seconds INTEGER",
+            [],
+        )?;
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN my_ttb_reported_at TEXT",
+            [],
+        )?;
+        
+        // Also add average fields for consistency with backend (will be populated from cloud sync)
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN avg_user_ttb_main_seconds INTEGER",
+            [],
+        )?;
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN avg_user_ttb_extra_seconds INTEGER",
+            [],
+        )?;
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN avg_user_ttb_completionist_seconds INTEGER",
+            [],
+        )?;
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN user_ttb_report_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        eprintln!("TTB migration completed successfully");
+    } else {
+        eprintln!("TTB migration: fields already exist, skipping");
+    }
+
+    Ok(())
+}
+
+/// Add is_game_finishing column to achievements table
+pub fn migrate_add_game_finishing(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('achievements') WHERE name = 'is_game_finishing'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        eprintln!("Running migration: adding is_game_finishing to achievements table");
+        conn.execute(
+            "ALTER TABLE achievements ADD COLUMN is_game_finishing INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        eprintln!("is_game_finishing migration completed successfully");
+    } else {
+        eprintln!("is_game_finishing migration: field already exists, skipping");
+    }
+
+    Ok(())
+}

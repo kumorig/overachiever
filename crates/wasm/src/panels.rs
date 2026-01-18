@@ -406,6 +406,46 @@ impl WasmApp {
                         }
                         
                         ui.add_space(32.0);
+                        
+                        // Show list of existing users
+                        let users = self.all_users.borrow();
+                        if !users.is_empty() {
+                            ui.separator();
+                            ui.add_space(16.0);
+                            
+                            ui.vertical_centered(|ui| {
+                                ui.heading("Current overachievers:");
+                                ui.add_space(12.0);
+                                
+                                // Create a fixed-width container
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(400.0, 0.0),
+                                    egui::Layout::top_down(egui::Align::Center),
+                                    |ui| {
+                                        ui.horizontal_wrapped(|ui| {
+                                            for (i, user) in users.iter().enumerate() {
+                                                if let Some(short_id) = &user.short_id {
+                                                    let profile_url = format!("/{}", short_id);
+                                                    if ui.link(short_id).clicked() {
+                                                        if let Some(window) = web_sys::window() {
+                                                            let _ = window.location().set_href(&profile_url);
+                                                        }
+                                                    }
+                                                    
+                                                    // Add comma separator if not the last item
+                                                    if i < users.len() - 1 {
+                                                        ui.label(",");
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    }
+                                );
+                            });
+                            
+                            ui.add_space(16.0);
+                        }
+                        
                         ui.separator();
                         ui.add_space(16.0);
                         
@@ -453,6 +493,101 @@ impl WasmApp {
                 });
             }
             ConnectionState::Authenticated(_) => {}
+        }
+    }
+    
+    // ========================================================================
+    // TTB Reporting Dialog
+    // ========================================================================
+    
+    pub fn render_ttb_dialog(&mut self, ctx: &egui::Context) {
+        let dialog_state = match self.ttb_dialog_state.as_mut() {
+            Some(state) if state.is_open => state,
+            _ => {
+                self.ttb_dialog_state = None;
+                return;
+            }
+        };
+
+        let mut submitted = false;
+        let mut cancelled = false;
+        
+        egui::Window::new("Report Time to Beat")
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.set_min_width(400.0);
+                
+                // Show completion message if present
+                if let Some(ref msg) = dialog_state.completion_message {
+                    ui.label(egui::RichText::new(msg).strong().color(egui::Color32::from_rgb(100, 255, 100)));
+                    ui.add_space(8.0);
+                }
+                
+                ui.label(egui::RichText::new(format!("Game: {}", dialog_state.game_name)).strong());
+                ui.add_space(8.0);
+                
+                ui.label("Enter your completion times (leave blank if you haven't completed that mode):");
+                ui.add_space(8.0);
+                
+                // Main story
+                ui.horizontal(|ui| {
+                    ui.label("Main Story:");
+                    ui.add_space(4.0);
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_minutes).desired_width(50.0));
+                    ui.label("m");
+                });
+                
+                // Main + Extras
+                ui.horizontal(|ui| {
+                    ui.label("Main + Extras:");
+                    ui.add_space(4.0);
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_minutes).desired_width(50.0));
+                    ui.label("m");
+                });
+                
+                // 100% Completionist
+                ui.horizontal(|ui| {
+                    ui.label("100% Completionist:");
+                    ui.add_space(4.0);
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_minutes).desired_width(50.0));
+                    ui.label("m");
+                });
+                
+                ui.add_space(16.0);
+                
+                // Buttons
+                ui.horizontal(|ui| {
+                    if ui.button("Submit").clicked() {
+                        submitted = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                });
+            });
+
+        if cancelled {
+            self.ttb_dialog_state = None;
+        } else if submitted {
+            // Get the values and send via WebSocket
+            let appid = dialog_state.appid;
+            let (main_secs, extra_secs, comp_secs) = dialog_state.get_times();
+            
+            // Send ReportTtb message via WebSocket
+            if let Some(client) = &self.ws_client {
+                client.report_ttb(appid, main_secs, extra_secs, comp_secs);
+                self.status = "Submitting TTB report...".to_string();
+            }
+            
+            // Close dialog
+            self.ttb_dialog_state = None;
         }
     }
 }

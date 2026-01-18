@@ -13,7 +13,7 @@
 
 ## Project Conventions
 
-* Do not deploy for the user (me). Never. Tell me when we need to deploy. 
+* Do not build, run or deploy for the user (me). It's enough to tell me when it's needed. 
 
 * we want to keep as much code shared between desktop and wasm as possible.
 
@@ -27,3 +27,4 @@
 
 * **SSH to server**: Use `plink -no-antispoof tatsugo` to run commands on the production server
 * **PostgreSQL**: Run `plink -no-antispoof tatsugo "sudo -u postgres psql -d overachiever -c 'YOUR SQL HERE'"` to query the database
+* **Grant permissions**: When adding new DB columns or tables, remember to grant access to the `overachiever` database user.

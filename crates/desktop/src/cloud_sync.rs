@@ -682,6 +682,7 @@ pub fn submit_tags(token: &str, appid: u64, tags: &[(String, u32)]) -> Result<us
     }
 
     #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
     struct SubmitResponse {
         success: bool,
         count: usize,

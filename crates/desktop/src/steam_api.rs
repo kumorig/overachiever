@@ -427,11 +427,21 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
     crate::db::insert_run_history(&conn, &config.steam_id, total_games, unplayed_games)?;
     
     // Step 2: Fetch recently played games
+    update_log("Fetching recently played games...");
     let _ = progress_tx.send(UpdateProgress::FetchingRecentlyPlayed);
     
     let recent_games = fetch_recently_played_games(steam_key, steam_id, config.debug_recently_played)?;
     
+    update_log(&format!("Got {} recently played games", recent_games.len()));
+    if config.debug_recently_played || !recent_games.is_empty() {
+        for game in &recent_games {
+            update_log(&format!("Recent: {} (appid={}, playtime={}min)", 
+                game.name, game.appid, game.playtime_forever));
+        }
+    }
+    
     if recent_games.is_empty() {
+        update_log("No recently played games");
         // No recently played games, we're done
         let games = crate::db::get_all_games(&conn, &config.steam_id)?;
         let _ = progress_tx.send(UpdateProgress::Done { games, updated_count: 0 });
@@ -442,6 +452,7 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
     }
     
     // Upsert recently played games (in case any are missing from owned games)
+    update_log("Upserting recently played games to database...");
     crate::db::upsert_games(&conn, &config.steam_id, &recent_games)?;
     
     // Recalculate total games after adding recently played (some F2P games might not be in GetOwnedGames)

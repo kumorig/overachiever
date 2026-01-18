@@ -241,11 +241,18 @@ pub fn render_games_over_time<P: StatsPanelPlatform>(
     
     let line = Line::new(line_name, points).color(line_color);
     
+    // Reset zoom when switching tabs so the new line fits in view
+    let tab_changed = new_tab != current_tab;
+    
     // Use consistent plot ID - changing IDs can cause WASM layout issues
     let mut plot = Plot::new("games_history")
         .auto_bounds(egui::Vec2b::new(true, true))
         .include_y(y_min)
         .include_y(y_max);
+    
+    if tab_changed {
+        plot = plot.reset();
+    }
     
     if let Some(height) = config.plot_height {
         plot = plot.height(height).width(ui.available_width());
@@ -352,11 +359,18 @@ pub fn render_achievement_progress<P: StatsPanelPlatform>(
     
     let line = Line::new(line_name, points).color(line_color);
     
+    // Reset zoom when switching tabs so the new line fits in view
+    let tab_changed = new_tab != current_tab;
+    
     // Use consistent plot ID - changing IDs can cause WASM layout issues
     let mut plot = Plot::new("achievements_history")
         .auto_bounds(egui::Vec2b::new(true, true))
         .include_y(y_min)
         .include_y(y_max);
+    
+    if tab_changed {
+        plot = plot.reset();
+    }
     
     if let Some(height) = config.plot_height {
         plot = plot.height(height).width(ui.available_width());

@@ -76,7 +76,7 @@ pub fn save_game_achievements(
 /// Load achievements for a specific game
 pub fn get_game_achievements(conn: &Connection, steam_id: &str, appid: u64) -> Result<Vec<GameAchievement>> {
     let mut stmt = conn.prepare(
-        "SELECT appid, apiname, name, description, icon, icon_gray, achieved, unlocktime
+        "SELECT appid, apiname, name, description, icon, icon_gray, achieved, unlocktime, is_game_finishing
          FROM achievements WHERE steam_id = ?1 AND appid = ?2 ORDER BY name"
     )?;
     
@@ -97,6 +97,7 @@ pub fn get_game_achievements(conn: &Connection, steam_id: &str, appid: u64) -> R
             icon_gray: row.get(5)?,
             achieved: row.get::<_, i32>(6)? == 1,
             unlocktime,
+            is_game_finishing: row.get::<_, i32>(8)? == 1,
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -158,4 +159,26 @@ pub fn get_all_achievements_for_export(conn: &Connection, steam_id: &str) -> Res
     })?.collect::<Result<Vec<_>>>()?;
     
     Ok(achievements)
+}
+
+/// Mark an achievement as game-finishing (unmarks all others for the same game)
+pub fn mark_game_finishing(
+    conn: &Connection,
+    steam_id: &str,
+    appid: u64,
+    apiname: &str,
+) -> Result<()> {
+    // First, unmark all achievements for this game
+    conn.execute(
+        "UPDATE achievements SET is_game_finishing = 0 WHERE steam_id = ?1 AND appid = ?2",
+        (steam_id, appid as i64),
+    )?;
+    
+    // Then mark the specified achievement
+    conn.execute(
+        "UPDATE achievements SET is_game_finishing = 1 WHERE steam_id = ?1 AND appid = ?2 AND apiname = ?3",
+        (steam_id, appid as i64, apiname),
+    )?;
+    
+    Ok(())
 }

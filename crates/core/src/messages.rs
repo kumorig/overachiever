@@ -72,6 +72,20 @@ pub enum ClientMessage {
     /// Request history data when viewing as guest
     FetchGuestHistory { short_id: String },
     
+    /// Report user's Time to Beat times
+    ReportTtb {
+        appid: u64,
+        main_seconds: Option<i32>,
+        extra_seconds: Option<i32>,
+        completionist_seconds: Option<i32>,
+    },
+    
+    /// Mark an achievement as game-finishing
+    MarkGameFinishing {
+        appid: u64,
+        apiname: String,
+    },
+    
     /// Ping to keep connection alive
     Ping,
 }
@@ -161,6 +175,25 @@ pub enum ServerMessage {
     
     /// Guest library not found (invalid short_id)
     GuestNotFound { short_id: String },
+    
+    /// TTB report submitted successfully
+    TtbReported {
+        appid: u64,
+        game: Game,
+    },
+    
+    /// Show TTB reporting dialog (triggered on 100% completion)
+    ShowTtbDialog {
+        appid: u64,
+        game_name: String,
+        completion_message: Option<String>,
+    },
+    
+    /// Game-finishing achievement marked
+    GameFinishingMarked {
+        appid: u64,
+        achievements: Vec<GameAchievement>,
+    },
     
     /// Generic error
     Error { 

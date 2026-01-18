@@ -139,6 +139,15 @@ impl WsClient {
         self.send(&ClientMessage::FetchGuestHistory { short_id: short_id.to_string() });
     }
     
+    pub fn report_ttb(&self, appid: u64, main_seconds: Option<i32>, extra_seconds: Option<i32>, completionist_seconds: Option<i32>) {
+        self.send(&ClientMessage::ReportTtb { 
+            appid, 
+            main_seconds, 
+            extra_seconds, 
+            completionist_seconds 
+        });
+    }
+    
     #[allow(dead_code)]
     pub fn submit_rating(&self, appid: u64, rating: u8, comment: Option<String>) {
         self.send(&ClientMessage::SubmitRating { appid, rating, comment });
