@@ -156,11 +156,11 @@ impl SteamOverachieverApp {
                         }
                         ScrapeProgress::Starting { total } => {
                             self.state = AppState::Scraping { current: 0, total };
-                            self.status = format!("Scraping 0 / {} games...", total);
+                            self.status = format!("Fetching from Steam Api: 0 / {} games...", total);
                         }
                         ScrapeProgress::Scraping { current, total, game_name } => {
                             self.state = AppState::Scraping { current, total };
-                            self.status = format!("Scraping {} / {}: {}", current, total, game_name);
+                            self.status = format!("Fetching from Steam Api: {} / {}: {}", current, total, game_name);
                         }
                         ScrapeProgress::GameUpdated { appid, unlocked, total } => {
                             // Update the game in our list immediately

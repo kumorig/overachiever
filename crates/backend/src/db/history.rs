@@ -235,18 +235,12 @@ pub async fn get_all_user_achievements(pool: &Pool, steam_id: &str) -> Result<Ve
     ).await?;
     
     let achievements = rows.into_iter().map(|row| {
-        let unlocktime: Option<i32> = row.get("unlocktime");
+        let unlocktime: Option<chrono::DateTime<chrono::Utc>> = row.get("unlocktime");
         SyncAchievement {
             appid: row.get::<_, i64>("appid") as u64,
             apiname: row.get("apiname"),
             achieved: row.get("achieved"),
-            unlocktime: unlocktime.and_then(|t| {
-                if t > 0 {
-                    chrono::DateTime::from_timestamp(t as i64, 0)
-                } else {
-                    None
-                }
-            }),
+            unlocktime,
         }
     }).collect();
     

@@ -149,7 +149,29 @@ impl GamesTablePlatform for WasmApp {
             self.sort_column = column;
             self.sort_order = SortOrder::Ascending;
         }
-        sort_games(&mut self.games, self.sort_column, self.sort_order);
+        
+        // TTB sorting needs access to cache, handle it specially
+        if column == SortColumn::TimeToBeat {
+            let order = self.sort_order;
+            let cache = &self.ttb_cache;
+            self.games.sort_by(|a, b| {
+                // Prioritize user-reported data over HLTB data
+                let a_ttb = a.my_ttb_main_seconds
+                    .or(a.avg_user_ttb_main_seconds)
+                    .map(|s| s as f32 / 3600.0) // Convert seconds to hours
+                    .or_else(|| cache.get(&a.appid).and_then(|t| t.main))
+                    .unwrap_or(-1.0);
+                let b_ttb = b.my_ttb_main_seconds
+                    .or(b.avg_user_ttb_main_seconds)
+                    .map(|s| s as f32 / 3600.0) // Convert seconds to hours
+                    .or_else(|| cache.get(&b.appid).and_then(|t| t.main))
+                    .unwrap_or(-1.0);
+                let cmp = a_ttb.partial_cmp(&b_ttb).unwrap_or(std::cmp::Ordering::Equal);
+                if order == SortOrder::Descending { cmp.reverse() } else { cmp }
+            });
+        } else {
+            sort_games(&mut self.games, self.sort_column, self.sort_order);
+        }
     }
     
     fn filter_name(&self) -> &str {
@@ -246,6 +268,10 @@ impl GamesTablePlatform for WasmApp {
     fn show_ttb_column(&self) -> bool {
         // Always show TTB column in WASM
         true
+    }
+    
+    fn get_ttb_times(&self, appid: u64) -> Option<&overachiever_core::TtbTimes> {
+        self.ttb_cache.get(&appid)
     }
     
     fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, completion_message: Option<String>) {

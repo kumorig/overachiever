@@ -211,3 +211,36 @@ pub async fn fetch_all_users(server_url: &str) -> Result<Vec<overachiever_core::
         .await
         .map_err(|e| format!("Failed to parse users: {}", e))
 }
+
+/// Fetch TTB times for multiple games from the backend
+pub async fn fetch_ttb_batch(appids: &[u64]) -> Result<Vec<overachiever_core::TtbTimes>, String> {
+    if appids.is_empty() {
+        return Ok(vec![]);
+    }
+    
+    let origin = web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_default();
+    
+    let url = format!("{}/api/ttb/batch", origin);
+    
+    let body = serde_json::json!({ "appids": appids });
+    
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .map_err(|e| format!("Failed to serialize request: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+    
+    if !response.ok() {
+        return Err(format!("Failed to fetch TTB times (status {})", response.status()));
+    }
+    
+    response
+        .json::<Vec<overachiever_core::TtbTimes>>()
+        .await
+        .map_err(|e| format!("Failed to parse TTB times: {}", e))
+}
+

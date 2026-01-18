@@ -5,6 +5,7 @@ use overachiever_core::{
     CloudSyncData, SyncAchievement, TtbTimes
 };
 use chrono::Utc;
+use std::path::PathBuf;
 
 // Helper functions for u64 <-> i64 conversion for SQLite
 // rusqlite 0.38+ removed ToSql/FromSql for u64
@@ -18,10 +19,26 @@ fn appid_from_sql(val: i64) -> u64 {
     val as u64
 }
 
-const DB_PATH: &str = "steam_overachiever.db";
+/// Get the path to the database file in the app's data directory
+fn get_db_path() -> PathBuf {
+    if let Some(proj_dirs) = directories::ProjectDirs::from("", "", "Overachiever") {
+        let data_dir = proj_dirs.data_dir();
+        // Create the directory if it doesn't exist
+        if let Err(e) = std::fs::create_dir_all(data_dir) {
+            eprintln!("Failed to create data directory: {}", e);
+            // Fall back to current directory
+            return PathBuf::from("steam_overachiever.db");
+        }
+        data_dir.join("steam_overachiever.db")
+    } else {
+        // Fallback to current directory if we can't get the app data dir
+        PathBuf::from("steam_overachiever.db")
+    }
+}
 
 pub fn open_connection() -> Result<Connection> {
-    let conn = Connection::open(DB_PATH)?;
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path)?;
     init_tables(&conn)?;
     Ok(conn)
 }
@@ -969,8 +986,8 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
     // Import games
     for game in &data.games {
         conn.execute(
-            "INSERT INTO games (steam_id, appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at, achievements_total, achievements_unlocked, last_achievement_scrape)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO games (steam_id, appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at, achievements_total, achievements_unlocked, last_achievement_scrape, avg_user_ttb_main_seconds, avg_user_ttb_extra_seconds, avg_user_ttb_completionist_seconds, user_ttb_report_count, my_ttb_main_seconds, my_ttb_extra_seconds, my_ttb_completionist_seconds, my_ttb_reported_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             rusqlite::params![
                 steam_id,
                 appid_to_sql(game.appid),
@@ -982,6 +999,14 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
                 game.achievements_total,
                 game.achievements_unlocked,
                 game.last_achievement_scrape.as_ref().map(|d| d.to_rfc3339()),
+                game.avg_user_ttb_main_seconds,
+                game.avg_user_ttb_extra_seconds,
+                game.avg_user_ttb_completionist_seconds,
+                game.user_ttb_report_count,
+                game.my_ttb_main_seconds,
+                game.my_ttb_extra_seconds,
+                game.my_ttb_completionist_seconds,
+                game.my_ttb_reported_at.as_ref().map(|d| d.to_rfc3339()),
             ],
         )?;
     }
@@ -1008,17 +1033,23 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
         )?;
     }
     
+    // Clear last_achievement_scrape for games that have achievements
+    // This will trigger a re-scrape to populate icon URLs and metadata
+    conn.execute(
+        "UPDATE games SET last_achievement_scrape = NULL 
+         WHERE steam_id = ?1 AND appid IN (SELECT DISTINCT appid FROM achievements WHERE steam_id = ?1)",
+        [steam_id],
+    )?;
+    
     // Import run history
     for rh in &data.run_history {
-        let played_games = rh.total_games - rh.unplayed_games;
         conn.execute(
-            "INSERT INTO run_history (steam_id, recorded_at, total_games, played_games, unplayed_games, unplayed_games_total)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO run_history (steam_id, run_at, total_games, unplayed_games, unplayed_games_total)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![
                 steam_id,
                 rh.run_at.to_rfc3339(),
                 rh.total_games,
-                played_games,
                 rh.unplayed_games,
                 rh.unplayed_games_total,
             ],
@@ -1028,7 +1059,7 @@ pub fn import_cloud_sync_data(conn: &Connection, data: &CloudSyncData) -> Result
     // Import achievement history
     for ah in &data.achievement_history {
         conn.execute(
-            "INSERT INTO achievement_history (steam_id, recorded_at, total_achievements, unlocked_achievements, games_with_achievements, avg_completion)
+            "INSERT INTO achievement_history (steam_id, recorded_at, total_achievements, unlocked_achievements, games_with_achievements, avg_completion_percent)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 steam_id,

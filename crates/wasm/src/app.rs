@@ -4,7 +4,7 @@ use eframe::egui;
 use overachiever_core::{
     Game, GameAchievement, UserProfile, RunHistory, AchievementHistory, 
     SyncState, LogEntry, GdprConsent, SidebarPanel, SortColumn, SortOrder, TriFilter,
-    sort_games,
+    TtbTimes, sort_games,
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -110,6 +110,12 @@ pub struct WasmApp {
     // TTB reporting dialog state
     pub(crate) ttb_dialog_state: Option<overachiever_core::TtbDialogState>,
     
+    // TTB cache (HLTB data from backend)
+    pub(crate) ttb_cache: HashMap<u64, TtbTimes>,
+    
+    // Pending TTB cache update (from async fetch)
+    pub(crate) pending_ttb_cache: Option<std::rc::Rc<std::cell::RefCell<HashMap<u64, TtbTimes>>>>,
+    
     // List of all users (for display on login screen)
     pub(crate) all_users: Rc<RefCell<Vec<UserProfile>>>,
 }
@@ -183,6 +189,8 @@ impl WasmApp {
             log_selected_achievement: None,
             single_game_refreshing: None,
             ttb_dialog_state: None,
+            ttb_cache: HashMap::new(),
+            pending_ttb_cache: None,
             all_users: Rc::new(RefCell::new(Vec::new())),
         };
         
@@ -323,6 +331,66 @@ impl WasmApp {
         }
     }
     
+    /// Fetch TTB times for all games from the backend
+    fn fetch_ttb_times(&mut self) {
+        let appids: Vec<u64> = self.games.iter().map(|g| g.appid).collect();
+        
+        if appids.is_empty() {
+            return;
+        }
+        
+        // Clear existing cache
+        self.ttb_cache.clear();
+        
+        // Spawn async task to fetch TTB times
+        let ttb_cache = std::rc::Rc::new(std::cell::RefCell::new(HashMap::new()));
+        let ttb_cache_clone = ttb_cache.clone();
+        
+        wasm_bindgen_futures::spawn_local(async move {
+            match crate::http_client::fetch_ttb_batch(&appids).await {
+                Ok(times) => {
+                    let mut cache = ttb_cache_clone.borrow_mut();
+                    for time in times {
+                        cache.insert(time.appid, time);
+                    }
+                    web_sys::console::log_1(&format!("Loaded {} TTB entries from backend", cache.len()).into());
+                }
+                Err(e) => {
+                    web_sys::console::error_1(&format!("Failed to fetch TTB times: {}", e).into());
+                }
+            }
+        });
+        
+        // Note: We can't directly update self.ttb_cache from the async context,
+        // so we'll need to poll this in the update loop
+        // Store the Rc for polling
+        self.pending_ttb_cache = Some(ttb_cache);
+    }
+    
+    /// Process pending TTB cache updates from async fetch
+    fn process_pending_ttb_cache(&mut self) {
+        let should_clear = if let Some(pending_cache) = &self.pending_ttb_cache {
+            let cache = pending_cache.borrow();
+            if !cache.is_empty() && self.ttb_cache.is_empty() {
+                // Copy data from pending cache to main cache
+                for (appid, times) in cache.iter() {
+                    self.ttb_cache.insert(*appid, times.clone());
+                }
+                web_sys::console::log_1(&format!("Applied {} TTB entries to cache", self.ttb_cache.len()).into());
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        if should_clear {
+            self.pending_ttb_cache = None;
+        }
+    }
+
+    
     pub(crate) fn check_messages(&mut self) {
         let messages = if let Some(client) = &self.ws_client {
             client.poll_messages()
@@ -367,6 +435,8 @@ impl WasmApp {
                     if let Some(client) = &self.ws_client {
                         client.fetch_history();
                     }
+                    // Fetch TTB times from backend
+                    self.fetch_ttb_times();
                 }
                 overachiever_core::ServerMessage::Achievements { appid, achievements } => {
                     self.achievements_cache.insert(appid, achievements);
@@ -450,6 +520,9 @@ impl WasmApp {
                             client.fetch_guest_history(&short_id);
                         }
                     }
+                    
+                    // Fetch TTB times from backend
+                    self.fetch_ttb_times();
                 }
                 overachiever_core::ServerMessage::GuestNotFound { short_id } => {
                     self.status = format!("User not found: {}", short_id);
@@ -511,6 +584,7 @@ impl eframe::App for WasmApp {
         self.check_ws_state();
         self.check_messages();
         self.process_pending_ratings();
+        self.process_pending_ttb_cache();
         
         if matches!(self.connection_state, ConnectionState::Disconnected) {
             self.connect();

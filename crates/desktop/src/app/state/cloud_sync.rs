@@ -3,7 +3,8 @@
 use crate::cloud_sync::{CloudSyncState, CloudOpResult, start_steam_login};
 use crate::db::{
     import_cloud_sync_data, get_all_achievements_for_export, get_all_games, 
-    get_run_history, get_achievement_history, get_log_entries, open_connection
+    get_run_history, get_achievement_history, get_log_entries, open_connection,
+    cache_ttb_times
 };
 use crate::steam_library::get_installed_games_with_sizes;
 use overachiever_core::CloudSyncData;
@@ -112,6 +113,23 @@ impl SteamOverachieverApp {
                             self.log_entries = get_log_entries(&conn, &steam_id, 30).unwrap_or_default();
                             
                             self.sort_games();
+                            
+                            // Reload TTB cache from database (in case user had cached TTB data before)
+                            self.load_ttb_cache();
+                            
+                            // Fetch TTB times from server for all games and cache locally
+                            let appids: Vec<u64> = self.games.iter().map(|g| g.appid).collect();
+                            if !appids.is_empty() {
+                                if let Ok(ttb_times) = crate::cloud_sync::fetch_ttb_batch(&appids) {
+                                    // Cache each TTB time locally
+                                    for times in ttb_times {
+                                        if let Ok(conn) = open_connection() {
+                                            let _ = cache_ttb_times(&conn, &times);
+                                        }
+                                        self.ttb_cache.insert(times.appid, times);
+                                    }
+                                }
+                            }
                             
                             self.cloud_sync_state = CloudSyncState::Success(format!(
                                 "Downloaded {} games, {} achievements!", 

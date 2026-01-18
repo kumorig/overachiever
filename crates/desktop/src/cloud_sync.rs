@@ -693,3 +693,35 @@ pub fn submit_tags(token: &str, appid: u64, tags: &[(String, u32)]) -> Result<us
 
     Ok(result.count)
 }
+
+/// Fetch TTB times for a batch of games from the server
+pub fn fetch_ttb_batch(appids: &[u64]) -> Result<Vec<overachiever_core::TtbTimes>, String> {
+    if appids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let url = format!("{}/api/ttb/batch", DEFAULT_SERVER_URL);
+
+    #[derive(serde::Serialize)]
+    struct BatchRequest {
+        appids: Vec<u64>,
+    }
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(&url)
+        .json(&BatchRequest { appids: appids.to_vec() })
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    let times: Vec<overachiever_core::TtbTimes> = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(times)
+}
