@@ -11,7 +11,7 @@ members = [
 default-members = ["crates/desktop"]
 
 [workspace.package]
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kumorig/steam-overachiever-v3"

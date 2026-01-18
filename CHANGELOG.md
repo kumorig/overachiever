@@ -1,5 +1,8 @@
-### 0.3.4
-* No longer require login to view libraries other people have linked.
+### 0.3.4 - 2026-01-18
+* Various improvements.
+* Database now stored in app data directory
+* Time to Beat integration (posting times, showing times)
+* No longer require login to view libraries other people have linked
 
 ### 0.3.3 - 2025-12-25
 * allow updating single games with refresh-button in game table.
