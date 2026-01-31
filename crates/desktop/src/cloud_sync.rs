@@ -44,7 +44,6 @@ pub struct UploadProgress {
 #[derive(Debug, Clone)]
 pub struct AuthResult {
     pub token: String,
-    #[allow(dead_code)]
     pub steam_id: String,
 }
 
@@ -118,7 +117,7 @@ fn run_callback_server() -> Result<AuthResult, String> {
                 
                 // Send response to browser
                 let (status, body) = match &result {
-                    Ok(_) => ("200 OK", "<html><head><meta charset=\"utf-8\"></head><body><h1>&#10003; Linked to Cloud!</h1><p>You can close this window and return to Overachiever.</p><script>window.close()</script></body></html>"),
+                    Ok(_) => ("200 OK", "<html><head><meta charset=\"utf-8\"></head><body><h1>&#10003; Log in successful!</h1><p>You can close this window and return to Overachiever.</p><script>window.close()</script></body></html>"),
                     Err(e) => ("400 Bad Request", &format!("<html><head><meta charset=\"utf-8\"></head><body><h1>&#10007; Login Failed</h1><p>{}</p></body></html>", e) as &str),
                 };
                 

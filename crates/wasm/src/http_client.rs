@@ -244,3 +244,72 @@ pub async fn fetch_ttb_batch(appids: &[u64]) -> Result<Vec<overachiever_core::Tt
         .map_err(|e| format!("Failed to parse TTB times: {}", e))
 }
 
+/// Fetch all available tag names from the backend
+pub async fn fetch_all_tag_names() -> Result<Vec<String>, String> {
+    let origin = web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_default();
+    
+    let url = format!("{}/api/tags", origin);
+    
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch tag names: {}", e))?;
+    
+    if !response.ok() {
+        return Err(format!("Failed to fetch tag names (status {})", response.status()));
+    }
+    
+    #[derive(Deserialize)]
+    struct TagNamesResponse {
+        tags: Vec<String>,
+    }
+    
+    let result = response
+        .json::<TagNamesResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse tag names: {}", e))?;
+    
+    Ok(result.tags)
+}
+
+/// Fetch tags for multiple games from the backend
+pub async fn fetch_tags_batch(appids: &[u64]) -> Result<Vec<overachiever_core::GameTag>, String> {
+    if appids.is_empty() {
+        return Ok(vec![]);
+    }
+    
+    let origin = web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_default();
+    
+    let url = format!("{}/api/tags/batch", origin);
+    
+    let body = serde_json::json!({ "appids": appids });
+    
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .map_err(|e| format!("Failed to serialize request: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+    
+    if !response.ok() {
+        return Err(format!("Failed to fetch tags (status {})", response.status()));
+    }
+    
+    #[derive(Deserialize)]
+    struct TagsBatchResponse {
+        tags: Vec<overachiever_core::GameTag>,
+    }
+    
+    let result = response
+        .json::<TagsBatchResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse tags: {}", e))?;
+    
+    Ok(result.tags)
+}
+

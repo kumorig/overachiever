@@ -137,3 +137,56 @@ pub fn get_auth_url() -> String {
         })
         .unwrap_or_else(|| "/auth/steam".to_string())
 }
+
+// ============================================================================
+// Tag Caching
+// ============================================================================
+
+const TAG_CACHE_KEY: &str = "overachiever_available_tags";
+const TAG_CACHE_VERSION_KEY: &str = "overachiever_tag_cache_version";
+const TAG_CACHE_VERSION: &str = "1"; // Increment to invalidate cache
+
+/// Get cached available tags from localStorage
+pub fn get_cached_tags() -> Option<Vec<String>> {
+    let storage = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()?;
+    
+    // Check cache version
+    let cached_version = storage.get_item(TAG_CACHE_VERSION_KEY).ok().flatten();
+    if cached_version.as_deref() != Some(TAG_CACHE_VERSION) {
+        // Cache is outdated, clear it
+        let _ = storage.remove_item(TAG_CACHE_KEY);
+        let _ = storage.remove_item(TAG_CACHE_VERSION_KEY);
+        return None;
+    }
+    
+    // Get cached tags
+    let json = storage.get_item(TAG_CACHE_KEY).ok().flatten()?;
+    serde_json::from_str(&json).ok()
+}
+
+/// Save available tags to localStorage
+pub fn save_tags_to_cache(tags: &[String]) {
+    if let Some(storage) = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+    {
+        if let Ok(json) = serde_json::to_string(tags) {
+            let _ = storage.set_item(TAG_CACHE_KEY, &json);
+            let _ = storage.set_item(TAG_CACHE_VERSION_KEY, TAG_CACHE_VERSION);
+        }
+    }
+}
+
+/// Clear cached tags (useful when forcing a refresh)
+#[allow(dead_code)]
+pub fn clear_cached_tags() {
+    if let Some(storage) = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+    {
+        let _ = storage.remove_item(TAG_CACHE_KEY);
+        let _ = storage.remove_item(TAG_CACHE_VERSION_KEY);
+    }
+}

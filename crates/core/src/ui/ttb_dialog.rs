@@ -78,8 +78,8 @@ pub struct TtbDialogState {
 }
 
 impl TtbDialogState {
-    pub fn new(appid: u64, game_name: String, completion_message: Option<String>) -> Self {
-        Self {
+    pub fn new(appid: u64, game_name: String, completion_message: Option<String>, game: Option<&Game>) -> Self {
+        let mut state = Self {
             appid,
             game_name,
             completion_message,
@@ -90,7 +90,14 @@ impl TtbDialogState {
             completionist_hours: String::new(),
             completionist_minutes: String::new(),
             is_open: true,
+        };
+        
+        // Prefill with existing data or playtime
+        if let Some(g) = game {
+            state.prefill_from_game(g);
         }
+        
+        state
     }
     
     pub fn open(&mut self, appid: u64, game_name: String, completion_message: Option<String>) {
@@ -111,11 +118,19 @@ impl TtbDialogState {
         self.completionist_minutes.clear();
     }
     
-    /// Prefill the dialog with existing TTB data
+    /// Prefill the dialog with existing TTB data or playtime
     pub fn prefill_from_game(&mut self, game: &Game) {
+        // Prefill main time from existing TTB data, or use playtime if no TTB data exists
         if let Some(seconds) = game.my_ttb_main_seconds {
             let hours = seconds / 3600;
             let minutes = (seconds % 3600) / 60;
+            self.main_hours = hours.to_string();
+            self.main_minutes = minutes.to_string();
+        } else if game.playtime_forever > 0 {
+            // Autofill with playtime (convert minutes to hours/minutes)
+            let playtime_seconds = game.playtime_forever * 60;
+            let hours = playtime_seconds / 3600;
+            let minutes = (playtime_seconds % 3600) / 60;
             self.main_hours = hours.to_string();
             self.main_minutes = minutes.to_string();
         }
@@ -180,35 +195,35 @@ pub fn show_ttb_dialog(ui: &mut egui::Ui, state: &mut TtbDialogState) -> Option<
             ui.label("Enter your completion times (leave blank if you haven't completed that mode):");
             ui.add_space(8.0);
             
-            // Main story
-            ui.horizontal(|ui| {
-                ui.label("Main Story:");
-                ui.add_space(4.0);
-                ui.add(egui::TextEdit::singleline(&mut state.main_hours).desired_width(50.0));
-                ui.label("h");
-                ui.add(egui::TextEdit::singleline(&mut state.main_minutes).desired_width(50.0));
-                ui.label("m");
-            });
+            // Use a grid for aligned inputs
+            egui::Grid::new("ttb_input_grid")
+                .num_columns(5)
+                .spacing([8.0, 8.0])
+                .show(ui, |ui| {
+                    // Main story
+                    ui.label("Main Story:");
+                    ui.add(egui::TextEdit::singleline(&mut state.main_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut state.main_minutes).desired_width(50.0));
+                    ui.label("m");
+                    ui.end_row();
+                    
+                    // Main + Extras
+                    ui.label("Main + Extras:");
+                    ui.add(egui::TextEdit::singleline(&mut state.extra_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut state.extra_minutes).desired_width(50.0));
+                    ui.label("m");
+                    ui.end_row();
             
-            // Main + Extras
-            ui.horizontal(|ui| {
-                ui.label("Main + Extras:");
-                ui.add_space(4.0);
-                ui.add(egui::TextEdit::singleline(&mut state.extra_hours).desired_width(50.0));
-                ui.label("h");
-                ui.add(egui::TextEdit::singleline(&mut state.extra_minutes).desired_width(50.0));
-                ui.label("m");
-            });
-            
-            // 100% Completionist
-            ui.horizontal(|ui| {
-                ui.label("100% Completionist:");
-                ui.add_space(4.0);
-                ui.add(egui::TextEdit::singleline(&mut state.completionist_hours).desired_width(50.0));
-                ui.label("h");
-                ui.add(egui::TextEdit::singleline(&mut state.completionist_minutes).desired_width(50.0));
-                ui.label("m");
-            });
+                    // 100% Completionist
+                    ui.label("100% Completionist:");
+                    ui.add(egui::TextEdit::singleline(&mut state.completionist_hours).desired_width(50.0));
+                    ui.label("h");
+                    ui.add(egui::TextEdit::singleline(&mut state.completionist_minutes).desired_width(50.0));
+                    ui.label("m");
+                    ui.end_row();
+                });
             
             ui.add_space(16.0);
             

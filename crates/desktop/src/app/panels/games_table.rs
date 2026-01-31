@@ -4,9 +4,9 @@
 use eframe::egui;
 
 use crate::app::SteamOverachieverApp;
-use crate::db::{open_connection, get_game_achievements};
+use crate::db::{open_connection, get_game_achievements, get_all_games};
 use crate::ui::{SortColumn, SortOrder, TriFilter};
-use overachiever_core::{GamesTablePlatform, GameAchievement, sort_games, get_filtered_indices, render_filter_bar, render_games_table};
+use overachiever_core::{Game, GamesTablePlatform, GameAchievement, sort_games, get_filtered_indices, render_filter_bar, render_games_table};
 
 /// Implement GamesTablePlatform for the desktop app
 impl GamesTablePlatform for SteamOverachieverApp {
@@ -244,12 +244,13 @@ impl GamesTablePlatform for SteamOverachieverApp {
         SteamOverachieverApp::remove_from_ttb_blacklist(self, appid);
     }
 
-    fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, completion_message: Option<String>) {
+    fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, game: Option<&Game>, completion_message: Option<String>) {
         // Create or update the TTB dialog state
         self.ttb_dialog_state = Some(overachiever_core::TtbDialogState::new(
             appid,
             game_name.to_string(),
             completion_message,
+            game,
         ));
     }
 
@@ -308,6 +309,57 @@ impl GamesTablePlatform for SteamOverachieverApp {
 
     fn is_fetching_tags(&self, appid: u64) -> bool {
         self.tags_fetching == Some(appid)
+    }
+
+    // ============================================================================
+    // Hidden Games Methods
+    // ============================================================================
+
+    fn filter_hidden(&self) -> TriFilter {
+        self.filter_hidden
+    }
+
+    fn set_filter_hidden(&mut self, filter: TriFilter) {
+        self.filter_hidden = filter;
+    }
+
+    fn toggle_game_hidden(&mut self, appid: u64) {
+        // Toggle the manual hidden status
+        if let Some(game) = self.games.iter_mut().find(|g| g.appid == appid) {
+            game.hidden = !game.hidden;
+            
+            // Update in database
+            let steam_id = &self.config.steam_id;
+            if let Ok(conn) = open_connection() {
+                if let Err(e) = conn.execute(
+                    "UPDATE games SET hidden = ?1 WHERE steam_id = ?2 AND appid = ?3",
+                    (if game.hidden { 1 } else { 0 }, steam_id, appid as i64),
+                ) {
+                    eprintln!("Failed to update hidden status: {}", e);
+                }
+            }
+        }
+    }
+
+    fn sync_steam_hidden(&mut self) {
+        // Import hidden games from Steam's sharedconfig.vdf
+        let steam_id = &self.config.steam_id;
+        if let Ok(conn) = open_connection() {
+            match crate::steam_config::sync_steam_hidden_games(&conn, steam_id) {
+                Ok(count) => {
+                    self.status = format!("Synced {} hidden games from Steam", count);
+                    // Reload games from database to get updated steam_hidden flags
+                    if let Ok(games) = get_all_games(&conn, steam_id) {
+                        self.games = games;
+                        self.sort_games();
+                    }
+                }
+                Err(e) => {
+                    self.status = format!("Failed to sync Steam hidden games: {}", e);
+                    eprintln!("Failed to sync Steam hidden games: {}", e);
+                }
+            }
+        }
     }
 }
 

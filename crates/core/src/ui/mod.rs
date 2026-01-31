@@ -7,11 +7,13 @@ mod stats_panel;
 mod log_panel;
 mod games_table;
 mod ttb_dialog;
+mod tag_search;
 
 pub use stats_panel::*;
 pub use log_panel::*;
 pub use games_table::*;
 pub use ttb_dialog::*;
+pub use tag_search::*;
 
 use egui::{Response, RectAlign};
 use egui::containers::Popup;

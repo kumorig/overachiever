@@ -283,5 +283,23 @@ async fn handle_client_message(
                 ServerMessage::AuthError { reason: "Not authenticated".to_string() }
             }
         }
+        
+        ClientMessage::SetGameHidden { appid, hidden } => {
+            if let Some(ref steam_id) = authenticated_steam_id {
+                tracing::info!(steam_id = %steam_id, appid = %appid, hidden = %hidden, "Setting game hidden status");
+                match crate::db::update_game_hidden(&state.db_pool, steam_id, appid, hidden).await {
+                    Ok(()) => {
+                        // Fetch updated games list
+                        match crate::db::get_user_games(&state.db_pool, steam_id).await {
+                            Ok(games) => ServerMessage::Games { games },
+                            Err(e) => ServerMessage::Error { message: format!("Error fetching games: {}", e) }
+                        }
+                    }
+                    Err(e) => ServerMessage::Error { message: format!("Error updating hidden status: {}", e) }
+                }
+            } else {
+                ServerMessage::AuthError { reason: "Not authenticated".to_string() }
+            }
+        }
     }
 }

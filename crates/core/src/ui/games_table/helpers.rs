@@ -109,6 +109,15 @@ pub fn get_filtered_indices(platform: &impl GamesTablePlatform) -> Vec<usize> {
                     }
                 }
             }
+
+            // Hidden filter - hide games that are hidden (manually or from Steam)
+            let is_hidden = g.hidden || g.steam_hidden;
+            match platform.filter_hidden() {
+                super::types::TriFilter::All => {}  // Show all
+                super::types::TriFilter::With => if !is_hidden { return false; }  // Show only hidden
+                super::types::TriFilter::Without => if is_hidden { return false; }  // Hide hidden (default)
+            }
+
             true
         })
         .map(|(idx, _)| idx)

@@ -1,6 +1,7 @@
 //! Filter bar rendering for games table
 
 use egui::{self, Color32, RichText, Ui};
+use egui_phosphor::regular;
 use super::platform::GamesTablePlatform;
 use super::types::TriFilter;
 use super::super::instant_tooltip;
@@ -59,12 +60,22 @@ pub fn render_filter_bar<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P) {
             instant_tooltip(&ttb_btn, "Time to Beat");
         }
 
+        // Hidden filter - tri-state toggle (All, Show Hidden, Hide Hidden)
+        let hidden_label = format!("H: {}", platform.filter_hidden().label("Hidden", "Visible"));
+        let hidden_btn = ui.button(&hidden_label);
+        if hidden_btn.clicked() {
+            let next = platform.filter_hidden().cycle();
+            platform.set_filter_hidden(next);
+        }
+        instant_tooltip(&hidden_btn, "Private Games");
+
         // Clear filters button
         let has_filters = !platform.filter_name().is_empty()
             || platform.filter_achievements() != TriFilter::All
             || platform.filter_playtime() != TriFilter::All
             || (platform.can_detect_installed() && platform.filter_installed() != TriFilter::All)
             || (platform.show_ttb_column() && platform.filter_ttb() != TriFilter::All)
+            || platform.filter_hidden() != TriFilter::Without  // Default is "Without" (hide hidden)
             || !platform.filter_tags().is_empty();
 
         if !has_filters {
@@ -79,6 +90,7 @@ pub fn render_filter_bar<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P) {
             if platform.show_ttb_column() {
                 platform.set_filter_ttb(TriFilter::All);
             }
+            platform.set_filter_hidden(TriFilter::Without);  // Reset to default: hide hidden
             platform.set_filter_tags(Vec::new());
             platform.set_tag_search_input(String::new());
         }
@@ -116,7 +128,7 @@ pub fn render_filter_bar<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P) {
             );
 
             // Toggle button to open/close dropdown
-            let toggle_btn = ui.button(if popup_open { "▲" } else { "▼" });
+            let toggle_btn = ui.button(if popup_open { regular::CARET_UP } else { regular::CARET_DOWN });
             if toggle_btn.clicked() {
                 popup_open = !popup_open;
             }

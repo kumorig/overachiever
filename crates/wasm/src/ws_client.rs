@@ -109,6 +109,7 @@ impl WsClient {
         self.send(&ClientMessage::SyncFromSteam);
     }
     
+    #[allow(dead_code)]
     pub fn full_scan(&self, force: bool) {
         self.send(&ClientMessage::FullScan { force });
     }

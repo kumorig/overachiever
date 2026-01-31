@@ -5,3 +5,6 @@
 /config.toml
 /web/dist
 /build_info.json
+/assets/SourceHanSans.ttc
+*.ps1
+!scripts/*.ps1

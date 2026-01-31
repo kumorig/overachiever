@@ -2,7 +2,7 @@
 
 use super::types::{SortColumn, SortOrder, TriFilter};
 use super::super::StatsPanelPlatform;
-use crate::{GameAchievement, TtbTimes};
+use crate::{Game, GameAchievement, TtbTimes};
 
 /// Platform abstraction for the games table
 /// 
@@ -139,7 +139,7 @@ pub trait GamesTablePlatform: StatsPanelPlatform {
     fn remove_from_ttb_blacklist(&mut self, _appid: u64) {}
 
     /// Request to show TTB reporting dialog (platform-specific implementation)
-    fn request_ttb_dialog(&mut self, _appid: u64, _game_name: &str, _completion_message: Option<String>) {}
+    fn request_ttb_dialog(&mut self, _appid: u64, _game_name: &str, _game: Option<&Game>, _completion_message: Option<String>) {}
 
     /// Get the persisted name column width (default 400.0)
     fn name_column_width(&self) -> f32 { 400.0 }
@@ -180,4 +180,20 @@ pub trait GamesTablePlatform: StatsPanelPlatform {
 
     /// Check if currently fetching tags for a game
     fn is_fetching_tags(&self, _appid: u64) -> bool { false }
+
+    // ============================================================================
+    // Hidden Games Methods
+    // ============================================================================
+
+    /// Get hidden games filter state (All, Show Only Hidden, Hide Hidden)
+    fn filter_hidden(&self) -> TriFilter { TriFilter::Without }  // Default: hide hidden games
+
+    /// Set hidden games filter state
+    fn set_filter_hidden(&mut self, _filter: TriFilter) {}
+
+    /// Toggle manual hidden status for a game
+    fn toggle_game_hidden(&mut self, _appid: u64) {}
+
+    /// Sync steam_hidden from Steam's sharedconfig.vdf
+    fn sync_steam_hidden(&mut self) {}
 }

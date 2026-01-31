@@ -1,3 +1,12 @@
+### 0.3.5 - 2026-02-01
+* **Profile Menu**: Centralized profile/cloud sync UI in both desktop and WASM (replaces scattered buttons)
+* **Private Games**: Import Steam's hidden/private game lists from `localconfig.vdf` (desktop only)
+* **CJK Font Support**: Downloadable Source Han Sans font for Japanese/Chinese/Korean text (~100MB)
+* **Tag Filters**: Filter games by tags (e.g., "Indie", "RPG") with searchable dropdown supporting all 324 unique tags
+* **UI Polish**: Fixed dropdown icons (Phosphor carets instead of Unicode squares), improved TTB dialog layout, config/DB moved to app data directory
+* **Auto-login**: Steam ID now saved on cloud login (no manual entry needed after linking)
+* **Settings Reorganization**: Removed Cloud tab (moved to Profile Menu), added font source selection (Built-in/CJK/System)
+
 ### 0.3.4 - 2026-01-18
 * Various improvements.
 * Database now stored in app data directory

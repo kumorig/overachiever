@@ -3,12 +3,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Description of how the desktop app handles data
-pub const DATA_HANDLING_DESCRIPTION: &str = "\
-• Your game data is stored locally on your computer\n\
-• Uses Steam API to fetch your games and achievements\n\
-• Uses overachiever.space to post/fetch community difficulty ratings and comments";
-
 /// Raw game data from Steam API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SteamGame {
@@ -35,18 +29,26 @@ pub struct Game {
     pub achievements_total: Option<i32>,
     pub achievements_unlocked: Option<i32>,
     pub last_achievement_scrape: Option<DateTime<Utc>>,
-    
+
     // User-reported TTB data (averaged from community)
     pub avg_user_ttb_main_seconds: Option<i32>,
     pub avg_user_ttb_extra_seconds: Option<i32>,
     pub avg_user_ttb_completionist_seconds: Option<i32>,
     pub user_ttb_report_count: i32,
-    
+
     // Current user's own TTB report (WASM/Remote) or single user's report (Desktop)
     pub my_ttb_main_seconds: Option<i32>,
     pub my_ttb_extra_seconds: Option<i32>,
     pub my_ttb_completionist_seconds: Option<i32>,
     pub my_ttb_reported_at: Option<DateTime<Utc>>,
+
+    // Hidden flags
+    #[serde(default)]
+    pub hidden: bool, // Manually hidden by user
+    #[serde(default)]
+    pub steam_hidden: bool, // Hidden in Steam library
+    #[serde(default)]
+    pub steam_private: bool, // Marked as private in Steam
 }
 
 impl Game {
@@ -60,9 +62,7 @@ impl Game {
 
     pub fn completion_percent(&self) -> Option<f32> {
         match (self.achievements_unlocked, self.achievements_total) {
-            (Some(unlocked), Some(total)) if total > 0 => {
-                Some(unlocked as f32 / total as f32 * 100.0)
-            }
+            (Some(unlocked), Some(total)) if total > 0 => Some(unlocked as f32 / total as f32 * 100.0),
             _ => None,
         }
     }

@@ -86,6 +86,12 @@ pub enum ClientMessage {
         apiname: String,
     },
     
+    /// Set hidden status for a game
+    SetGameHidden {
+        appid: u64,
+        hidden: bool,
+    },
+    
     /// Ping to keep connection alive
     Ping,
 }

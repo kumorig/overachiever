@@ -66,16 +66,25 @@ pub async fn upload_cloud_sync_data(pool: &Pool, data: &CloudSyncData) -> Result
     
     // Delete existing data for this user
     transaction.execute("DELETE FROM user_achievements WHERE steam_id = $1", &[&steam_id_int]).await?;
-    transaction.execute("DELETE FROM user_games WHERE steam_id = $1", &[&steam_id_int]).await?;
+    // NOTE: Don't delete user_games - we'll upsert to preserve hidden status
     transaction.execute("DELETE FROM run_history WHERE steam_id = $1", &[&steam_id_int]).await?;
     transaction.execute("DELETE FROM achievement_history WHERE steam_id = $1", &[&steam_id_int]).await?;
     
-    // Insert games
+    // Upsert games (preserving hidden status)
     for game in &data.games {
         transaction.execute(
             r#"
-            INSERT INTO user_games (steam_id, appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at, achievements_total, achievements_unlocked, last_sync)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO user_games (steam_id, appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at, achievements_total, achievements_unlocked, last_sync, hidden, steam_hidden)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (steam_id, appid) DO UPDATE SET
+                name = EXCLUDED.name,
+                playtime_forever = EXCLUDED.playtime_forever,
+                rtime_last_played = EXCLUDED.rtime_last_played,
+                img_icon_url = EXCLUDED.img_icon_url,
+                added_at = EXCLUDED.added_at,
+                achievements_total = EXCLUDED.achievements_total,
+                achievements_unlocked = EXCLUDED.achievements_unlocked,
+                last_sync = EXCLUDED.last_sync
             "#,
             &[
                 &steam_id_int,
@@ -88,6 +97,8 @@ pub async fn upload_cloud_sync_data(pool: &Pool, data: &CloudSyncData) -> Result
                 &game.achievements_total,
                 &game.achievements_unlocked,
                 &game.last_achievement_scrape,
+                &game.hidden,
+                &game.steam_hidden,
             ]
         ).await?;
     }

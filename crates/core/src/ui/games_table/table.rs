@@ -344,9 +344,8 @@ pub fn render_games_table<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P, 
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new("⏱ Time to Beat:").strong());
                                 
-                                // Check if we have user-reported or average data
-                                let has_user_data = game.my_ttb_main_seconds.is_some() 
-                                    || game.avg_user_ttb_main_seconds.is_some();
+                                // Check if we have user-reported data (show gold when report_count > 0)
+                                let has_user_data = game.user_ttb_report_count > 0;
                                 
                                 if has_user_data {
                                     // Show average user TTB (prioritize user's own report) in gold
@@ -402,7 +401,7 @@ pub fn render_games_table<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P, 
                                         RichText::new(format!("{} Report TTB", regular::CLOCK))
                                     ).small());
                                     if btn.clicked() {
-                                        platform.request_ttb_dialog(appid, &game.name, None);
+                                        platform.request_ttb_dialog(appid, &game.name, Some(&game), None);
                                     }
                                     instant_tooltip(&btn, "Report your time to beat for this game");
                                 });
@@ -516,8 +515,8 @@ pub fn render_games_table<P: GamesTablePlatform>(ui: &mut Ui, platform: &mut P, 
                         }
                         if !is_expanded {
                             // Check if we have user-reported data (gold) or HLTB data (light blue)
-                            let has_user_data = game.my_ttb_main_seconds.is_some() 
-                                || game.avg_user_ttb_main_seconds.is_some();
+                            // Show gold when we have at least 1 user report (my_ttb or avg_user_ttb with count > 0)
+                            let has_user_data = game.user_ttb_report_count > 0;
                             
                             if has_user_data {
                                 // Show user-reported data in gold

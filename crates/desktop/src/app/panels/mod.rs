@@ -1,6 +1,6 @@
 //! UI panel modules
 
-mod top;
+pub mod top;
 mod history;
 mod games_table;
 mod stats_impl;

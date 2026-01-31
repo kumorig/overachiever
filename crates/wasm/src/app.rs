@@ -3,7 +3,7 @@
 use eframe::egui;
 use overachiever_core::{
     Game, GameAchievement, UserProfile, RunHistory, AchievementHistory, 
-    SyncState, LogEntry, GdprConsent, SidebarPanel, SortColumn, SortOrder, TriFilter,
+    LogEntry, GdprConsent, SidebarPanel, SortColumn, SortOrder, TriFilter,
     TtbTimes, sort_games,
 };
 use std::collections::{HashMap, HashSet};
@@ -35,7 +35,6 @@ pub enum AppState {
     #[default]
     Idle,
     Syncing,
-    Scanning,
 }
 
 impl AppState {
@@ -64,8 +63,6 @@ pub struct WasmApp {
     // UI state
     pub(crate) status: String,
     pub(crate) app_state: AppState,
-    pub(crate) scan_progress: Option<(i32, i32, String)>, // (current, total, game_name)
-    pub(crate) force_full_scan: bool,
     pub(crate) sort_column: SortColumn,
     pub(crate) sort_order: SortOrder,
     pub(crate) expanded_rows: HashSet<u64>,
@@ -75,9 +72,16 @@ pub struct WasmApp {
     pub(crate) filter_name: String,
     pub(crate) filter_achievements: TriFilter,
     pub(crate) filter_playtime: TriFilter,
+    pub(crate) filter_ttb: TriFilter,
+    pub(crate) filter_hidden: TriFilter,
+    pub(crate) filter_tags: Vec<String>,
+    pub(crate) tag_search_input: String,
+    pub(crate) available_tags: Vec<String>,
+    pub(crate) game_tags_cache: HashMap<u64, HashMap<String, u32>>, // appid -> (tag_name -> vote_count)
     pub(crate) show_login: bool,
     pub(crate) include_unplayed_in_avg: bool,
     pub(crate) show_stats_panel: bool,
+    pub(crate) show_profile_menu: bool,
     pub(crate) sidebar_panel: SidebarPanel,
     pub(crate) games_graph_tab: usize,
     pub(crate) achievements_graph_tab: usize,
@@ -115,6 +119,10 @@ pub struct WasmApp {
     
     // Pending TTB cache update (from async fetch)
     pub(crate) pending_ttb_cache: Option<std::rc::Rc<std::cell::RefCell<HashMap<u64, TtbTimes>>>>,
+    
+    // Pending tags data (from async fetch)
+    pub(crate) pending_available_tags: Option<std::rc::Rc<std::cell::RefCell<Option<Vec<String>>>>>,
+    pub(crate) pending_game_tags: Option<std::rc::Rc<std::cell::RefCell<Vec<overachiever_core::GameTag>>>>,
     
     // List of all users (for display on login screen)
     pub(crate) all_users: Rc<RefCell<Vec<UserProfile>>>,
@@ -162,8 +170,6 @@ impl WasmApp {
             log_entries: Vec::new(),
             status,
             app_state: AppState::Idle,
-            scan_progress: None,
-            force_full_scan: false,
             sort_column: SortColumn::Name,
             sort_order: SortOrder::Ascending,
             expanded_rows: HashSet::new(),
@@ -173,9 +179,16 @@ impl WasmApp {
             filter_name: String::new(),
             filter_achievements: TriFilter::All,
             filter_playtime: TriFilter::All,
+            filter_ttb: TriFilter::All,
+            filter_hidden: TriFilter::Without,  // Default: hide hidden games
+            filter_tags: Vec::new(),
+            tag_search_input: String::new(),
+            available_tags: Vec::new(),
+            game_tags_cache: HashMap::new(),
             show_login: false,
             include_unplayed_in_avg: false,
             show_stats_panel,
+            show_profile_menu: false,
             sidebar_panel: SidebarPanel::Stats,
             games_graph_tab: 0,
             achievements_graph_tab: 0,
@@ -191,6 +204,8 @@ impl WasmApp {
             ttb_dialog_state: None,
             ttb_cache: HashMap::new(),
             pending_ttb_cache: None,
+            pending_available_tags: None,
+            pending_game_tags: None,
             all_users: Rc::new(RefCell::new(Vec::new())),
         };
         
@@ -199,6 +214,9 @@ impl WasmApp {
         
         // Fetch user list for login screen
         app.fetch_all_users();
+        
+        // Fetch available tags
+        app.fetch_available_tags();
         
         // Auto-connect on startup
         app.connect();
@@ -242,9 +260,129 @@ impl WasmApp {
         });
     }
     
+    /// Fetch available tag names from the backend
+    fn fetch_available_tags(&mut self) {
+        // Try to load from cache first
+        if let Some(cached_tags) = crate::storage::get_cached_tags() {
+            web_sys::console::log_1(&format!("Loaded {} tags from cache", cached_tags.len()).into());
+            self.available_tags = cached_tags;
+            // Still fetch in background to keep cache fresh
+            Self::update_tags_cache_in_background();
+            return;
+        }
+        
+        // No cache, fetch from backend
+        let pending = std::rc::Rc::new(std::cell::RefCell::new(None));
+        self.pending_available_tags = Some(pending.clone());
+        
+        wasm_bindgen_futures::spawn_local(async move {
+            match crate::http_client::fetch_all_tag_names().await {
+                Ok(tags) => {
+                    web_sys::console::log_1(&format!("Loaded {} available tags from backend", tags.len()).into());
+                    // Save to cache
+                    crate::storage::save_tags_to_cache(&tags);
+                    *pending.borrow_mut() = Some(tags);
+                }
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Failed to fetch tag names: {}", e).into());
+                }
+            }
+        });
+    }
+    
+    /// Update tags cache in background (doesn't update UI state)
+    fn update_tags_cache_in_background() {
+        wasm_bindgen_futures::spawn_local(async move {
+            match crate::http_client::fetch_all_tag_names().await {
+                Ok(tags) => {
+                    web_sys::console::log_1(&format!("Updated tags cache with {} tags", tags.len()).into());
+                    crate::storage::save_tags_to_cache(&tags);
+                }
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Failed to update tags cache: {}", e).into());
+                }
+            }
+        });
+    }
+    
+    /// Fetch tags for all games from the backend
+    fn fetch_game_tags(&mut self) {
+        let appids: Vec<u64> = self.games.iter().map(|g| g.appid).collect();
+        
+        if appids.is_empty() {
+            return;
+        }
+        
+        let pending = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        self.pending_game_tags = Some(pending.clone());
+        
+        wasm_bindgen_futures::spawn_local(async move {
+            match crate::http_client::fetch_tags_batch(&appids).await {
+                Ok(tags) => {
+                    web_sys::console::log_1(&format!("Loaded tags for {} games", tags.len()).into());
+                    *pending.borrow_mut() = tags;
+                }
+                Err(e) => {
+                    web_sys::console::error_1(&format!("Failed to fetch game tags: {}", e).into());
+                }
+            }
+        });
+    }
+    
+    /// Process pending available tags from async fetch
+    fn process_pending_available_tags(&mut self) {
+        let should_clear = if let Some(pending) = &self.pending_available_tags {
+            if let Some(tags) = pending.borrow_mut().take() {
+                self.available_tags = tags;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        if should_clear {
+            self.pending_available_tags = None;
+        }
+    }
+    
+    /// Process pending game tags from async fetch
+    fn process_pending_game_tags(&mut self) {
+        let should_clear = if let Some(pending) = &self.pending_game_tags {
+            let tags = pending.borrow();
+            if !tags.is_empty() {
+                // Build cache: appid -> (tag_name -> vote_count)
+                self.game_tags_cache.clear();
+                for tag in tags.iter() {
+                    let entry = self.game_tags_cache.entry(tag.appid).or_insert_with(HashMap::new);
+                    entry.insert(tag.tag_name.clone(), tag.vote_count);
+                }
+                web_sys::console::log_1(&format!("Applied tags for {} games to cache", self.game_tags_cache.len()).into());
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        if should_clear {
+            self.pending_game_tags = None;
+        }
+    }
+    
     // ========================================================================
     // Connection Management
     // ========================================================================
+    
+    pub(crate) fn start_sync(&mut self) {
+        if let Some(client) = &self.ws_client {
+            self.app_state = AppState::Syncing;
+            self.status = "Syncing from Steam...".to_string();
+            client.sync_from_steam();
+        }
+    }
     
     pub(crate) fn connect(&mut self) {
         if self.connection_state != ConnectionState::Disconnected {
@@ -437,13 +575,14 @@ impl WasmApp {
                     }
                     // Fetch TTB times from backend
                     self.fetch_ttb_times();
+                    // Fetch game tags from backend
+                    self.fetch_game_tags();
                 }
                 overachiever_core::ServerMessage::Achievements { appid, achievements } => {
                     self.achievements_cache.insert(appid, achievements);
                 }
                 overachiever_core::ServerMessage::Error { message } => {
                     self.app_state = AppState::Idle;
-                    self.scan_progress = None;
                     self.status = format!("Error: {}", message);
                     
                     // Force reload on JWT expiration
@@ -453,33 +592,10 @@ impl WasmApp {
                         }
                     }
                 }
-                overachiever_core::ServerMessage::SyncProgress { state } => {
-                    match state {
-                        SyncState::Starting => {
-                            self.status = "Starting scan...".to_string();
-                        }
-                        SyncState::ScrapingAchievements { current, total, game_name } => {
-                            self.scan_progress = Some((current, total, game_name.clone()));
-                            self.status = format!("Scanning {}/{}: {}", current, total, game_name);
-                        }
-                        SyncState::Done => {
-                            self.app_state = AppState::Idle;
-                            self.scan_progress = None;
-                            self.status = "Scan complete!".to_string();
-                        }
-                        SyncState::Error { message } => {
-                            self.app_state = AppState::Idle;
-                            self.scan_progress = None;
-                            self.status = format!("Scan error: {}", message);
-                        }
-                        _ => {}
-                    }
-                }
                 overachiever_core::ServerMessage::SyncComplete { result, games } => {
                     self.games = games;
                     self.app_state = AppState::Idle;
-                    self.scan_progress = None;
-                    self.status = format!("Scan complete! Updated {} games, {} achievements", result.games_updated, result.achievements_updated);
+                    self.status = format!("Sync complete! Updated {} games, {} achievements", result.games_updated, result.achievements_updated);
                     sort_games(&mut self.games, self.sort_column, self.sort_order);
                     // Refresh history
                     if let Some(client) = &self.ws_client {
@@ -523,6 +639,8 @@ impl WasmApp {
                     
                     // Fetch TTB times from backend
                     self.fetch_ttb_times();
+                    // Fetch game tags from backend
+                    self.fetch_game_tags();
                 }
                 overachiever_core::ServerMessage::GuestNotFound { short_id } => {
                     self.status = format!("User not found: {}", short_id);
@@ -539,10 +657,13 @@ impl WasmApp {
                 }
                 overachiever_core::ServerMessage::ShowTtbDialog { appid, game_name, completion_message } => {
                     // Auto-trigger TTB dialog (e.g., on 100% completion)
+                    // Find the game to pass for autofill
+                    let game = self.games.iter().find(|g| g.appid == appid);
                     self.ttb_dialog_state = Some(overachiever_core::TtbDialogState::new(
                         appid,
                         game_name,
                         completion_message,
+                        game,
                     ));
                 }
                 _ => {}
@@ -551,28 +672,8 @@ impl WasmApp {
     }
     
     // ========================================================================
-    // Actions
+    // Actions (removed sync/scan - desktop only)
     // ========================================================================
-    
-    pub(crate) fn start_sync(&mut self) {
-        if let Some(client) = &self.ws_client {
-            self.app_state = AppState::Syncing;
-            self.status = "Syncing from Steam...".to_string();
-            client.sync_from_steam();
-        }
-    }
-    
-    pub(crate) fn start_full_scan(&mut self) {
-        if let Some(client) = &self.ws_client {
-            self.app_state = AppState::Scanning;
-            self.status = "Starting full scan...".to_string();
-            client.full_scan(self.force_full_scan);
-        }
-    }
-    
-    pub(crate) fn games_needing_scrape(&self) -> usize {
-        self.games.iter().filter(|g| g.achievements_total.is_none()).count()
-    }
 }
 
 // ============================================================================
@@ -585,6 +686,8 @@ impl eframe::App for WasmApp {
         self.check_messages();
         self.process_pending_ratings();
         self.process_pending_ttb_cache();
+        self.process_pending_available_tags();
+        self.process_pending_game_tags();
         
         if matches!(self.connection_state, ConnectionState::Disconnected) {
             self.connect();
@@ -602,5 +705,8 @@ impl eframe::App for WasmApp {
         
         // Show TTB reporting dialog if open (implemented in panels.rs)
         self.render_ttb_dialog(ctx);
+        
+        // Show profile menu if open (implemented in panels.rs)
+        self.render_profile_menu(ctx);
     }
 }

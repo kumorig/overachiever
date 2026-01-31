@@ -4,7 +4,23 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-const CACHE_DIR: &str = "icon_cache";
+/// Get the path to the icon cache directory in the app's data directory
+fn get_cache_dir() -> PathBuf {
+    if let Some(proj_dirs) = directories::ProjectDirs::from("", "", "Overachiever") {
+        let data_dir = proj_dirs.data_dir();
+        let cache_dir = data_dir.join("icon_cache");
+        // Create the directory if it doesn't exist
+        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+            eprintln!("Failed to create icon cache directory: {}", e);
+            // Fall back to current directory
+            return PathBuf::from("icon_cache");
+        }
+        cache_dir
+    } else {
+        // Fallback to current directory if we can't get the app data dir
+        PathBuf::from("icon_cache")
+    }
+}
 
 /// Icon cache manager that downloads and caches achievement icons locally
 pub struct IconCache {
@@ -15,12 +31,7 @@ pub struct IconCache {
 
 impl IconCache {
     pub fn new() -> Self {
-        let cache_dir = PathBuf::from(CACHE_DIR);
-        
-        // Create cache directory if it doesn't exist
-        if !cache_dir.exists() {
-            let _ = fs::create_dir_all(&cache_dir);
-        }
+        let cache_dir = get_cache_dir();
         
         Self {
             cache_dir,

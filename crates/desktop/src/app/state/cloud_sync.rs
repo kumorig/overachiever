@@ -31,8 +31,9 @@ impl SteamOverachieverApp {
         if let Some(ref receiver) = self.auth_receiver {
             match receiver.try_recv() {
                 Ok(Ok(result)) => {
-                    // Save token to config
+                    // Save token and steam_id to config
                     self.config.cloud_token = Some(result.token);
+                    self.config.steam_id = result.steam_id;
                     let _ = self.config.save();
                     self.cloud_sync_state = CloudSyncState::Success("Linked to cloud successfully!".to_string());
                     self.auth_receiver = None;

@@ -1,15 +1,18 @@
 //! Main application module
 
+pub mod panels;
 mod state;
-mod panels;
 
+use crate::cloud_sync::{AuthResult, CloudOpResult, CloudSyncState};
 use crate::config::Config;
-use crate::db::{get_all_games, get_run_history, get_achievement_history, get_log_entries, open_connection, get_last_update, finalize_migration, ensure_user, get_all_achievement_ratings};
+use crate::db::{
+    ensure_user, finalize_migration, get_achievement_history, get_all_achievement_ratings, get_all_games, get_last_update, get_log_entries, get_run_history,
+    open_connection,
+};
 use crate::icon_cache::IconCache;
 use crate::steam_library::get_installed_games;
-use crate::ui::{AppState, SortColumn, SortOrder, TriFilter, ProgressReceiver};
-use crate::cloud_sync::{CloudSyncState, AuthResult, CloudOpResult};
-use overachiever_core::{Game, RunHistory, AchievementHistory, GameAchievement, LogEntry, SidebarPanel, CloudSyncStatus, TtbTimes};
+use crate::ui::{AppState, ProgressReceiver, SortColumn, SortOrder, TriFilter};
+use overachiever_core::{AchievementHistory, CloudSyncStatus, Game, GameAchievement, LogEntry, RunHistory, SidebarPanel, TtbTimes};
 
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
@@ -51,6 +54,8 @@ pub struct SteamOverachieverApp {
     pub(crate) show_settings: bool,
     // GDPR dialog window
     pub(crate) show_gdpr_dialog: bool,
+    // Profile menu window
+    pub(crate) show_profile_menu: bool,
     // Sidebar panel state
     pub(crate) show_stats_panel: bool,
     pub(crate) sidebar_panel: SidebarPanel,
@@ -96,6 +101,8 @@ pub struct SteamOverachieverApp {
     pub(crate) english_name_receiver: Option<Receiver<Option<String>>>,
     // Filter for TTB (Time to Beat)
     pub(crate) filter_ttb: TriFilter,
+    // Filter for hidden games
+    pub(crate) filter_hidden: TriFilter,
     // Settings tab selection
     pub(crate) settings_tab: SettingsTab,
     // Available system fonts (lazily loaded on first settings open)
@@ -114,6 +121,10 @@ pub struct SteamOverachieverApp {
     pub(crate) tag_search_input: String,
     // Available tags for dropdown (loaded from backend)
     pub(crate) available_tags: Vec<String>,
+    // Hidden tags - games with these tags will be hidden from view
+    pub(crate) hidden_tags: Vec<String>,
+    // Hidden tags search state (for profile menu)
+    pub(crate) hidden_tags_search: Option<overachiever_core::TagSearchState>,
     // Tags cache: appid -> Vec<(tag_name, vote_count)>
     pub(crate) tags_cache: HashMap<u64, Vec<(String, u32)>>,
     // Tags fetch queue: list of appids to fetch tags for
@@ -136,6 +147,12 @@ pub struct SteamOverachieverApp {
     pub(crate) selected_vote_tag_index: Option<usize>,
     // TTB reporting dialog state
     pub(crate) ttb_dialog_state: Option<overachiever_core::TtbDialogState>,
+    // CJK font download progress
+    pub(crate) cjk_font_download_progress: Option<crate::cjk_font::DownloadProgress>,
+    // CJK font download receiver (for completion)
+    pub(crate) cjk_font_download_receiver: Option<Receiver<Result<(), String>>>,
+    // CJK font download progress receiver (for real-time updates)
+    pub(crate) cjk_font_progress_receiver: Option<Receiver<crate::cjk_font::DownloadProgress>>,
 }
 
 /// Settings tab selection
@@ -144,7 +161,6 @@ pub enum SettingsTab {
     #[default]
     General,
     Steam,
-    Cloud,
     Debug,
 }
 
@@ -163,20 +179,20 @@ impl SteamOverachieverApp {
         let steam_id = config.steam_id.as_str();
         let initial_font_size = config.font_size;
         let conn = open_connection().expect("Failed to open database");
-        
+
         // Finalize any pending migrations with the user's steam_id
         if !steam_id.is_empty() {
             let _ = finalize_migration(&conn, steam_id);
             let _ = ensure_user(&conn, steam_id);
         }
-        
+
         let games = get_all_games(&conn, steam_id).unwrap_or_default();
         let run_history = get_run_history(&conn, steam_id).unwrap_or_default();
         let achievement_history = get_achievement_history(&conn, steam_id).unwrap_or_default();
         let log_entries = get_log_entries(&conn, steam_id, 30).unwrap_or_default();
         let last_update_time = get_last_update(&conn).unwrap_or(None);
         let is_cloud_linked = config.cloud_token.is_some();
-        
+
         // Load user achievement ratings - prefer server data if authenticated, fallback to local
         let user_achievement_ratings: HashMap<(u64, String), u8> = if let Some(token) = &config.cloud_token {
             // Try to fetch from server
@@ -186,9 +202,7 @@ impl SteamOverachieverApp {
                     for (appid, apiname, rating) in &server_ratings {
                         let _ = crate::db::set_achievement_rating(&conn, steam_id, *appid, apiname, *rating);
                     }
-                    server_ratings.into_iter()
-                        .map(|(appid, apiname, rating)| ((appid, apiname), rating))
-                        .collect()
+                    server_ratings.into_iter().map(|(appid, apiname, rating)| ((appid, apiname), rating)).collect()
                 }
                 Err(_) => {
                     // Fallback to local cache
@@ -207,10 +221,10 @@ impl SteamOverachieverApp {
                 .map(|(appid, apiname, rating)| ((appid, apiname), rating))
                 .collect()
         };
-        
+
         // Detect installed Steam games
         let installed_games = get_installed_games();
-        
+
         let mut app = Self {
             config,
             games,
@@ -235,6 +249,7 @@ impl SteamOverachieverApp {
             filter_playtime: TriFilter::All,
             show_settings,
             show_gdpr_dialog: false,
+            show_profile_menu: false,
             show_stats_panel: true,
             sidebar_panel: SidebarPanel::Stats,
             games_graph_tab: 0,
@@ -259,6 +274,7 @@ impl SteamOverachieverApp {
             ttb_search_pending: None,
             english_name_receiver: None,
             filter_ttb: TriFilter::All,
+            filter_hidden: TriFilter::Without, // Default: hide hidden games
             settings_tab: SettingsTab::default(),
             available_fonts: None,
             pending_font_size: initial_font_size,
@@ -278,19 +294,20 @@ impl SteamOverachieverApp {
             tag_filter_mode_and: true,
             selected_vote_tag_index: None,
             ttb_dialog_state: None,
+            hidden_tags: Vec::new(),
+            hidden_tags_search: None,
+            cjk_font_download_progress: None,
+            cjk_font_download_receiver: None,
+            cjk_font_progress_receiver: None,
         };
-        
+
         // Apply consistent sorting after loading from database
         app.sort_games();
 
         // Helper to log to ttb_log.txt
         fn init_log(msg: &str) {
             use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open("ttb_log.txt")
-            {
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("ttb_log.txt") {
                 let _ = writeln!(file, "[{}] {}", chrono::Local::now().format("%H:%M:%S"), msg);
             }
         }
@@ -313,7 +330,7 @@ impl SteamOverachieverApp {
         // Auto-start update on launch
         app.start_update();
         init_log("Update started");
-        
+
         app
     }
 }
@@ -324,6 +341,7 @@ impl eframe::App for SteamOverachieverApp {
         self.cleanup_expired_flashes();
         self.check_auth_callback();
         self.check_cloud_operation();
+        self.check_cjk_font_download(); // Check CJK font download progress
         self.ttb_scan_tick(); // Process TTB scan queue
         self.tags_fetch_tick(); // Process tags fetch queue
 
@@ -370,7 +388,7 @@ impl eframe::App for SteamOverachieverApp {
 
         // Show TTB search dialog if pending
         self.render_ttb_search_dialog(ctx);
-        
+
         // Show TTB reporting dialog if open
         self.render_ttb_reporting_dialog(ctx);
     }
@@ -420,10 +438,7 @@ impl SteamOverachieverApp {
 
                 ui.horizontal(|ui| {
                     ui.label("Search query:");
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut search_query)
-                            .desired_width(220.0)
-                    );
+                    let response = ui.add(egui::TextEdit::singleline(&mut search_query).desired_width(220.0));
                     // Focus the text field and select all on first show
                     if response.gained_focus() {
                         // Text is already selected by default when focused
@@ -490,97 +505,86 @@ impl SteamOverachieverApp {
 
         let mut submitted = false;
         let mut cancelled = false;
-        
-        egui::Window::new("Report Time to Beat")
-            .resizable(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.set_min_width(400.0);
-                
-                // Show completion message if present
-                if let Some(ref msg) = dialog_state.completion_message {
-                    ui.label(egui::RichText::new(msg).strong().color(egui::Color32::from_rgb(100, 255, 100)));
-                    ui.add_space(8.0);
-                }
-                
-                ui.label(egui::RichText::new(format!("Game: {}", dialog_state.game_name)).strong());
+
+        egui::Window::new("Report Time to Beat").resizable(false).collapsible(false).show(ctx, |ui| {
+            ui.set_min_width(400.0);
+
+            // Show completion message if present
+            if let Some(ref msg) = dialog_state.completion_message {
+                ui.label(egui::RichText::new(msg).strong().color(egui::Color32::from_rgb(100, 255, 100)));
                 ui.add_space(8.0);
-                
-                ui.label("Enter your completion times (leave blank if you haven't completed that mode):");
-                ui.add_space(8.0);
-                
+            }
+
+            ui.label(egui::RichText::new(format!("Game: {}", dialog_state.game_name)).strong());
+            ui.add_space(8.0);
+
+            ui.label("Enter your completion times (leave blank if you haven't completed that mode):");
+            ui.add_space(8.0);
+
+            // Use a grid for aligned inputs
+            egui::Grid::new("ttb_input_grid").num_columns(5).spacing([8.0, 8.0]).show(ui, |ui| {
                 // Main story
-                ui.horizontal(|ui| {
-                    ui.label("Main Story:");
-                    ui.add_space(4.0);
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_hours).desired_width(50.0));
-                    ui.label("h");
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_minutes).desired_width(50.0));
-                    ui.label("m");
-                });
-                
+                ui.label("Main Story:");
+                ui.add(egui::TextEdit::singleline(&mut dialog_state.main_hours).desired_width(50.0));
+                ui.label("h");
+                ui.add(egui::TextEdit::singleline(&mut dialog_state.main_minutes).desired_width(50.0));
+                ui.label("m");
+                ui.end_row();
+
                 // Main + Extras
-                ui.horizontal(|ui| {
-                    ui.label("Main + Extras:");
-                    ui.add_space(4.0);
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_hours).desired_width(50.0));
-                    ui.label("h");
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_minutes).desired_width(50.0));
-                    ui.label("m");
-                });
-                
+                ui.label("Main + Extras:");
+                ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_hours).desired_width(50.0));
+                ui.label("h");
+                ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_minutes).desired_width(50.0));
+                ui.label("m");
+                ui.end_row();
+
                 // 100% Completionist
-                ui.horizontal(|ui| {
-                    ui.label("100% Completionist:");
-                    ui.add_space(4.0);
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_hours).desired_width(50.0));
-                    ui.label("h");
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_minutes).desired_width(50.0));
-                    ui.label("m");
-                });
-                
-                ui.add_space(16.0);
-                
-                // Buttons
-                ui.horizontal(|ui| {
-                    if ui.button("Submit").clicked() {
-                        submitted = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancelled = true;
-                    }
-                });
+                ui.label("100% Completionist:");
+                ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_hours).desired_width(50.0));
+                ui.label("h");
+                ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_minutes).desired_width(50.0));
+                ui.label("m");
+                ui.end_row();
             });
+
+            ui.add_space(16.0);
+
+            // Buttons
+            ui.horizontal(|ui| {
+                if ui.button("Submit").clicked() {
+                    submitted = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    cancelled = true;
+                }
+            });
+        });
 
         if cancelled {
             self.ttb_dialog_state = None;
         } else if submitted {
             // Get the values and save
             let appid = dialog_state.appid;
-            
+
             // Save to local database
             if let Ok(conn) = crate::db::open_connection() {
                 let (main_secs, extra_secs, comp_secs) = dialog_state.get_times();
                 let timestamp = chrono::Utc::now();
-                
+
                 // Update the game record with TTB data
+                // Set user_ttb_report_count to 1 to indicate we have a user report (changes color from blue to gold)
                 let result = conn.execute(
                     "UPDATE games SET 
                         my_ttb_main_seconds = ?1,
                         my_ttb_extra_seconds = ?2,
                         my_ttb_completionist_seconds = ?3,
-                        my_ttb_reported_at = ?4
+                        my_ttb_reported_at = ?4,
+                        user_ttb_report_count = 1
                     WHERE appid = ?5 AND steam_id = ?6",
-                    rusqlite::params![
-                        main_secs,
-                        extra_secs,
-                        comp_secs,
-                        timestamp.to_rfc3339(),
-                        appid as i64,
-                        &self.config.steam_id,
-                    ],
+                    rusqlite::params![main_secs, extra_secs, comp_secs, timestamp.to_rfc3339(), appid as i64, &self.config.steam_id,],
                 );
-                
+
                 if let Err(e) = result {
                     eprintln!("Failed to save TTB report: {}", e);
                     self.status = format!("Failed to save TTB report: {}", e);
@@ -592,9 +596,59 @@ impl SteamOverachieverApp {
                     self.status = "TTB report saved successfully".to_string();
                 }
             }
-            
+
             // Close dialog
             self.ttb_dialog_state = None;
+        }
+    }
+
+    /// Start downloading the CJK font in a background thread
+    pub(crate) fn start_cjk_font_download(&mut self) {
+        let (tx_result, rx_result) = std::sync::mpsc::channel();
+        let (tx_progress, rx_progress) = std::sync::mpsc::channel();
+
+        std::thread::spawn(move || {
+            let result = crate::cjk_font::download_source_han_sans(move |progress| {
+                let _ = tx_progress.send(progress);
+            });
+            let _ = tx_result.send(result);
+        });
+
+        self.cjk_font_download_receiver = Some(rx_result);
+        self.cjk_font_download_progress = Some(crate::cjk_font::DownloadProgress::Starting);
+        
+        // Store the progress receiver so we can poll it
+        self.cjk_font_progress_receiver = Some(rx_progress);
+    }
+
+    /// Check for CJK font download completion and progress updates
+    fn check_cjk_font_download(&mut self) {
+        // Check for progress updates
+        if let Some(rx) = &self.cjk_font_progress_receiver {
+            while let Ok(progress) = rx.try_recv() {
+                self.cjk_font_download_progress = Some(progress);
+            }
+        }
+        
+        // Check for completion
+        if let Some(rx) = &self.cjk_font_download_receiver {
+            if let Ok(result) = rx.try_recv() {
+                self.cjk_font_download_receiver = None;
+                self.cjk_font_progress_receiver = None;
+                
+                match result {
+                    Ok(()) => {
+                        self.cjk_font_download_progress = Some(crate::cjk_font::DownloadProgress::Complete);
+                        self.status = "CJK font downloaded successfully!".to_string();
+                        // Trigger immediate font reload
+                        self.fonts_need_update = true;
+                    }
+                    Err(e) => {
+                        self.cjk_font_download_progress = Some(crate::cjk_font::DownloadProgress::Error(e.clone()));
+                        self.status = format!("Font download failed: {}", e);
+                    }
+                }
+            }
         }
     }
 }

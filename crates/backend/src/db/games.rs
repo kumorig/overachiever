@@ -27,7 +27,7 @@ pub async fn get_user_games_by_short_id(pool: &Pool, short_id: &str) -> Result<O
                avg_user_ttb_main_seconds, avg_user_ttb_extra_seconds, 
                avg_user_ttb_completionist_seconds, user_ttb_report_count,
                my_ttb_main_seconds, my_ttb_extra_seconds, 
-               my_ttb_completionist_seconds, my_ttb_reported_at
+               my_ttb_completionist_seconds, my_ttb_reported_at, hidden, steam_hidden
         FROM user_games
         WHERE steam_id = $1
         ORDER BY name
@@ -54,6 +54,9 @@ pub async fn get_user_games_by_short_id(pool: &Pool, short_id: &str) -> Result<O
             my_ttb_extra_seconds: row.get("my_ttb_extra_seconds"),
             my_ttb_completionist_seconds: row.get("my_ttb_completionist_seconds"),
             my_ttb_reported_at: row.get("my_ttb_reported_at"),
+            hidden: row.get::<_, Option<bool>>("hidden").unwrap_or(false),
+            steam_hidden: row.get::<_, Option<bool>>("steam_hidden").unwrap_or(false),
+            steam_private: false,  // Not stored in database yet
         }
     }).collect();
     
@@ -72,7 +75,7 @@ pub async fn get_user_games(pool: &Pool, steam_id: &str) -> Result<Vec<Game>, Db
                avg_user_ttb_main_seconds, avg_user_ttb_extra_seconds, 
                avg_user_ttb_completionist_seconds, user_ttb_report_count,
                my_ttb_main_seconds, my_ttb_extra_seconds, 
-               my_ttb_completionist_seconds, my_ttb_reported_at
+               my_ttb_completionist_seconds, my_ttb_reported_at, hidden, steam_hidden
         FROM user_games
         WHERE steam_id = $1
         ORDER BY name
@@ -99,6 +102,9 @@ pub async fn get_user_games(pool: &Pool, steam_id: &str) -> Result<Vec<Game>, Db
             my_ttb_extra_seconds: row.get("my_ttb_extra_seconds"),
             my_ttb_completionist_seconds: row.get("my_ttb_completionist_seconds"),
             my_ttb_reported_at: row.get("my_ttb_reported_at"),
+            hidden: row.get::<_, Option<bool>>("hidden").unwrap_or(false),
+            steam_hidden: row.get::<_, Option<bool>>("steam_hidden").unwrap_or(false),
+            steam_private: false,  // Not stored in database yet
         }
     }).collect();
     
@@ -167,6 +173,32 @@ pub async fn update_game_achievements(
             &total,
             &unlocked,
             &now,
+        ]
+    ).await?;
+    
+    Ok(())
+}
+
+/// Update hidden status for a game
+pub async fn update_game_hidden(
+    pool: &Pool,
+    steam_id: &str,
+    appid: u64,
+    hidden: bool,
+) -> Result<(), DbError> {
+    let client = pool.get().await?;
+    let steam_id_int: i64 = steam_id.parse().unwrap_or(0);
+    
+    client.execute(
+        r#"
+        UPDATE user_games
+        SET hidden = $3
+        WHERE steam_id = $1 AND appid = $2
+        "#,
+        &[
+            &steam_id_int,
+            &(appid as i64),
+            &hidden,
         ]
     ).await?;
     

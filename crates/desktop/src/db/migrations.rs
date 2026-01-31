@@ -294,3 +294,53 @@ pub fn migrate_add_game_finishing(conn: &Connection) -> Result<()> {
 
     Ok(())
 }
+
+/// Add hidden column to games table
+pub fn migrate_add_hidden(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'hidden'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        eprintln!("Running migration: adding hidden to games table");
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        eprintln!("hidden migration completed successfully");
+    } else {
+        eprintln!("hidden migration: field already exists, skipping");
+    }
+
+    Ok(())
+}
+
+/// Add steam_hidden column to games table (separate from manual hidden)
+pub fn migrate_add_steam_hidden(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'steam_hidden'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        eprintln!("Running migration: adding steam_hidden to games table");
+        conn.execute(
+            "ALTER TABLE games ADD COLUMN steam_hidden INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        eprintln!("steam_hidden migration completed successfully");
+    } else {
+        eprintln!("steam_hidden migration: field already exists, skipping");
+    }
+
+    Ok(())
+}

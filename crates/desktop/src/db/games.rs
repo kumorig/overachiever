@@ -55,7 +55,7 @@ pub fn get_all_games(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
          achievements_total, achievements_unlocked, last_achievement_scrape,
          avg_user_ttb_main_seconds, avg_user_ttb_extra_seconds, avg_user_ttb_completionist_seconds,
          user_ttb_report_count, my_ttb_main_seconds, my_ttb_extra_seconds,
-         my_ttb_completionist_seconds, my_ttb_reported_at
+         my_ttb_completionist_seconds, my_ttb_reported_at, hidden, steam_hidden
          FROM games WHERE steam_id = ?1 ORDER BY name"
     )?;
     
@@ -97,6 +97,8 @@ pub fn get_all_games(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
             my_ttb_extra_seconds: row.get(14)?,
             my_ttb_completionist_seconds: row.get(15)?,
             my_ttb_reported_at,
+            hidden: row.get::<_, Option<i32>>(17)?.map(|v| v != 0).unwrap_or(false),
+            steam_hidden: row.get::<_, Option<i32>>(18)?.map(|v| v != 0).unwrap_or(false),
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -110,7 +112,7 @@ pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -
          achievements_total, achievements_unlocked, last_achievement_scrape,
          avg_user_ttb_main_seconds, avg_user_ttb_extra_seconds, avg_user_ttb_completionist_seconds,
          user_ttb_report_count, my_ttb_main_seconds, my_ttb_extra_seconds,
-         my_ttb_completionist_seconds, my_ttb_reported_at
+         my_ttb_completionist_seconds, my_ttb_reported_at, hidden, steam_hidden
          FROM games WHERE steam_id = ?1 AND last_achievement_scrape IS NULL ORDER BY name"
     )?;
     
@@ -145,6 +147,8 @@ pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -
             my_ttb_extra_seconds: row.get(14)?,
             my_ttb_completionist_seconds: row.get(15)?,
             my_ttb_reported_at,
+            hidden: row.get::<_, Option<i32>>(17)?.map(|v| v != 0).unwrap_or(false),
+            steam_hidden: row.get::<_, Option<i32>>(18)?.map(|v| v != 0).unwrap_or(false),
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -170,6 +174,21 @@ pub fn report_ttb(
          my_ttb_reported_at = ?4
          WHERE steam_id = ?5 AND appid = ?6",
         (main_seconds, extra_seconds, completionist_seconds, &now, steam_id, appid as i64),
+    )?;
+    
+    Ok(())
+}
+
+/// Update hidden status for a game
+pub fn set_game_hidden(
+    conn: &Connection,
+    steam_id: &str,
+    appid: u64,
+    hidden: bool,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE games SET hidden = ?1 WHERE steam_id = ?2 AND appid = ?3",
+        (if hidden { 1 } else { 0 }, steam_id, appid as i64),
     )?;
     
     Ok(())

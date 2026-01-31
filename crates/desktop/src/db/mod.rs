@@ -145,6 +145,15 @@ fn init_tables(conn: &Connection) -> Result<()> {
     
     // Migration: add is_game_finishing to achievements table
     migrate_add_game_finishing(conn)?;
+    
+    // Migration: add hidden to games table
+    migrate_add_hidden(conn)?;
+    
+    // Migration: add steam_hidden to games table
+    migrate_add_steam_hidden(conn)?;
+    
+    // Migration: add steam_private to games table
+    migrate_add_steam_private(conn)?;
 
     // First plays table with steam_id
     conn.execute(
@@ -456,6 +465,68 @@ fn migrate_add_game_finishing(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Add hidden column to games table
+fn migrate_add_hidden(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'hidden'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+    }
+
+    Ok(())
+}
+
+/// Add steam_hidden column to games table (separate from manual hidden)
+fn migrate_add_steam_hidden(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'steam_hidden'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN steam_hidden INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+    }
+
+    Ok(())
+}
+
+fn migrate_add_steam_private(conn: &Connection) -> Result<()> {
+    let has_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'steam_private'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_column {
+        let _ = conn.execute(
+            "ALTER TABLE games ADD COLUMN steam_private INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+    }
+
+    Ok(())
+}
+
 /// Update migrated data with the actual steam_id
 pub fn finalize_migration(conn: &Connection, steam_id: &str) -> Result<()> {
     conn.execute(
@@ -538,7 +609,7 @@ pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> R
 pub fn get_all_games(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
     let mut stmt = conn.prepare(
         "SELECT appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at,
-         achievements_total, achievements_unlocked, last_achievement_scrape 
+         achievements_total, achievements_unlocked, last_achievement_scrape, hidden, steam_hidden, steam_private
          FROM games WHERE steam_id = ?1 ORDER BY name"
     )?;
     
@@ -573,6 +644,9 @@ pub fn get_all_games(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
             my_ttb_extra_seconds: None,
             my_ttb_completionist_seconds: None,
             my_ttb_reported_at: None,
+            hidden: row.get::<_, Option<i32>>(9)?.map(|v| v != 0).unwrap_or(false),
+            steam_hidden: row.get::<_, Option<i32>>(10)?.map(|v| v != 0).unwrap_or(false),
+            steam_private: row.get::<_, Option<i32>>(11)?.map(|v| v != 0).unwrap_or(false),
         })
     })?.collect::<Result<Vec<_>>>()?;
     
@@ -603,7 +677,7 @@ pub fn mark_game_no_achievements(conn: &Connection, steam_id: &str, appid: u64) 
 pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -> Result<Vec<Game>> {
     let mut stmt = conn.prepare(
         "SELECT appid, name, playtime_forever, rtime_last_played, img_icon_url, added_at,
-         achievements_total, achievements_unlocked, last_achievement_scrape 
+         achievements_total, achievements_unlocked, last_achievement_scrape, hidden, steam_hidden, steam_private
          FROM games WHERE steam_id = ?1 AND last_achievement_scrape IS NULL ORDER BY name"
     )?;
     
@@ -631,6 +705,9 @@ pub fn get_games_needing_achievement_scrape(conn: &Connection, steam_id: &str) -
             my_ttb_extra_seconds: None,
             my_ttb_completionist_seconds: None,
             my_ttb_reported_at: None,
+            hidden: row.get::<_, Option<i32>>(9)?.map(|v| v != 0).unwrap_or(false),
+            steam_hidden: row.get::<_, Option<i32>>(10)?.map(|v| v != 0).unwrap_or(false),
+            steam_private: row.get::<_, Option<i32>>(11)?.map(|v| v != 0).unwrap_or(false),
         })
     })?.collect::<Result<Vec<_>>>()?;
     

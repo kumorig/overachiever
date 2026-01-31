@@ -104,6 +104,9 @@ impl StatsPanelPlatform for WasmApp {
         self.filter_name.clear();
         self.filter_achievements = TriFilter::All;
         self.filter_playtime = TriFilter::All;
+        self.filter_ttb = TriFilter::All;
+        self.filter_hidden = TriFilter::Without;  // Reset to default
+        self.filter_tags.clear();
         
         // Expand the game row
         self.expanded_rows.insert(appid);
@@ -274,12 +277,65 @@ impl GamesTablePlatform for WasmApp {
         self.ttb_cache.get(&appid)
     }
     
-    fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, completion_message: Option<String>) {
+    fn request_ttb_dialog(&mut self, appid: u64, game_name: &str, game: Option<&Game>, completion_message: Option<String>) {
         // Create or update the TTB dialog state
         self.ttb_dialog_state = Some(overachiever_core::TtbDialogState::new(
             appid,
             game_name.to_string(),
             completion_message,
+            game,
         ));
+    }
+    
+    fn filter_ttb(&self) -> TriFilter {
+        self.filter_ttb
+    }
+    
+    fn set_filter_ttb(&mut self, filter: TriFilter) {
+        self.filter_ttb = filter;
+    }
+    
+    // ============================================================================
+    // Hidden Games Methods
+    // ============================================================================
+    
+    fn filter_hidden(&self) -> TriFilter {
+        self.filter_hidden
+    }
+    
+    fn set_filter_hidden(&mut self, filter: TriFilter) {
+        self.filter_hidden = filter;
+    }
+    
+    // ============================================================================
+    // Tag Methods
+    // ============================================================================
+    
+    fn filter_tags(&self) -> &[String] {
+        &self.filter_tags
+    }
+    
+    fn set_filter_tags(&mut self, tags: Vec<String>) {
+        self.filter_tags = tags;
+    }
+    
+    fn tag_search_input(&self) -> &str {
+        &self.tag_search_input
+    }
+    
+    fn set_tag_search_input(&mut self, input: String) {
+        self.tag_search_input = input;
+    }
+    
+    fn available_tags(&self) -> &[String] {
+        &self.available_tags
+    }
+    
+    fn get_tag_vote_count(&self, appid: u64, tag_name: &str) -> Option<u32> {
+        self.game_tags_cache.get(&appid)?.get(tag_name).copied()
+    }
+    
+    fn has_cached_tags(&self, appid: u64) -> bool {
+        self.game_tags_cache.contains_key(&appid)
     }
 }

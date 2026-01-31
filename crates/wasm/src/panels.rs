@@ -56,26 +56,6 @@ impl WasmApp {
                         }
                         ConnectionState::Authenticated(user) => {
                             ui.label(format!("{} {}", regular::USER, user.display_name));
-                            ui.separator();
-                            
-                            // Sync button
-                            if ui.add_enabled(!is_busy, egui::Button::new(format!("{} Sync", regular::ARROWS_CLOCKWISE))).clicked() {
-                                self.start_sync();
-                            }
-                            
-                            // Full Scan button
-                            let needs_scan = self.games_needing_scrape();
-                            let scan_label = if needs_scan > 0 {
-                                format!("{} Full Scan ({})", regular::GAME_CONTROLLER, needs_scan)
-                            } else {
-                                format!("{} Full Scan", regular::GAME_CONTROLLER)
-                            };
-                            let can_scan = (needs_scan > 0 || self.force_full_scan) && self.games_loaded;
-                            if ui.add_enabled(!is_busy && can_scan, egui::Button::new(scan_label)).clicked() {
-                                self.start_full_scan();
-                            }
-                            
-                            ui.checkbox(&mut self.force_full_scan, "Force");
                         }
                         ConnectionState::Error(e) => {
                             ui.colored_label(egui::Color32::RED, format!("{} {}", regular::WARNING, e));
@@ -90,17 +70,8 @@ impl WasmApp {
                 
                 if is_busy {
                     ui.spinner();
-                    if let Some((current, total, _)) = &self.scan_progress {
-                        let progress = *current as f32 / *total as f32;
-                        ui.add(egui::ProgressBar::new(progress)
-                            .text(&self.status)
-                            .animate(true));
-                    } else {
-                        ui.label(&self.status);
-                    }
-                } else {
-                    ui.label(&self.status);
                 }
+                ui.label(&self.status);
                 
                 // Right side - different for guest vs authenticated
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -124,30 +95,28 @@ impl WasmApp {
                             self.games_loaded = false;
                         }
                         
-                        // GDPR button - only show if consent has been set
-                        if self.gdpr_consent.is_set() {
-                            if ui.button(format!("{} Privacy", regular::SHIELD_CHECK))
-                                .on_hover_text("Privacy Settings")
+                        // User profile button - opens profile menu
+                        if let ConnectionState::Authenticated(ref _user) = self.connection_state {
+                            if ui.button(format!("{}", regular::USER))
+                                .on_hover_text("Profile Menu")
                                 .clicked() 
                             {
-                                // Reset consent to show modal again
-                                self.gdpr_consent = GdprConsent::Unset;
-                                clear_gdpr_consent_from_storage();
+                                self.show_profile_menu = !self.show_profile_menu;
                             }
                         }
+                    } else {
+                        // Not authenticated - show green Steam/game controller login button
+                        let green = egui::Color32::from_rgb(100, 200, 100);
+                        let login_button = egui::Button::new(format!("{}", regular::GAME_CONTROLLER))
+                            .fill(green);
                         
-                        // User profile button - show shareable link
-                        if let ConnectionState::Authenticated(ref user) = self.connection_state {
-                            if let Some(ref short_id) = user.short_id {
-                                let profile_url = format!("https://overachiever.space/{}", short_id);
-                                if ui.button(format!("{}", regular::USER))
-                                    .on_hover_text_at_pointer(format!("Copy profile link: {}", profile_url))
-                                    .clicked() 
-                                {
-                                    // Copy to clipboard
-                                    ui.ctx().copy_text(profile_url);
-                                }
-                            }
+                        if ui.add(login_button)
+                            .on_hover_text("Sign in with Steam")
+                            .clicked()
+                        {
+                            let login_url = get_auth_url();
+                            let _ = web_sys::window()
+                                .and_then(|w| w.location().set_href(&login_url).ok());
                         }
                     }
                 });
@@ -530,35 +499,35 @@ impl WasmApp {
                 ui.label("Enter your completion times (leave blank if you haven't completed that mode):");
                 ui.add_space(8.0);
                 
-                // Main story
-                ui.horizontal(|ui| {
-                    ui.label("Main Story:");
-                    ui.add_space(4.0);
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_hours).desired_width(50.0));
-                    ui.label("h");
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.main_minutes).desired_width(50.0));
-                    ui.label("m");
-                });
-                
-                // Main + Extras
-                ui.horizontal(|ui| {
-                    ui.label("Main + Extras:");
-                    ui.add_space(4.0);
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_hours).desired_width(50.0));
-                    ui.label("h");
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_minutes).desired_width(50.0));
-                    ui.label("m");
-                });
-                
-                // 100% Completionist
-                ui.horizontal(|ui| {
-                    ui.label("100% Completionist:");
-                    ui.add_space(4.0);
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_hours).desired_width(50.0));
-                    ui.label("h");
-                    ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_minutes).desired_width(50.0));
-                    ui.label("m");
-                });
+                // Use a grid for aligned inputs
+                egui::Grid::new("ttb_input_grid")
+                    .num_columns(5)
+                    .spacing([8.0, 8.0])
+                    .show(ui, |ui| {
+                        // Main story
+                        ui.label("Main Story:");
+                        ui.add(egui::TextEdit::singleline(&mut dialog_state.main_hours).desired_width(50.0));
+                        ui.label("h");
+                        ui.add(egui::TextEdit::singleline(&mut dialog_state.main_minutes).desired_width(50.0));
+                        ui.label("m");
+                        ui.end_row();
+                        
+                        // Main + Extras
+                        ui.label("Main + Extras:");
+                        ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_hours).desired_width(50.0));
+                        ui.label("h");
+                        ui.add(egui::TextEdit::singleline(&mut dialog_state.extra_minutes).desired_width(50.0));
+                        ui.label("m");
+                        ui.end_row();
+                        
+                        // 100% Completionist
+                        ui.label("100% Completionist:");
+                        ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_hours).desired_width(50.0));
+                        ui.label("h");
+                        ui.add(egui::TextEdit::singleline(&mut dialog_state.completionist_minutes).desired_width(50.0));
+                        ui.label("m");
+                        ui.end_row();
+                    });
                 
                 ui.add_space(16.0);
                 
@@ -590,4 +559,70 @@ impl WasmApp {
             self.ttb_dialog_state = None;
         }
     }
+    
+    // ========================================================================
+    // Profile Menu Window
+    // ========================================================================
+    
+    pub fn render_profile_menu(&mut self, ctx: &egui::Context) {
+        if !self.show_profile_menu {
+            return;
+        }
+        
+        let mut keep_open = true;
+        
+        egui::Window::new(format!("{} Profile", regular::USER))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut keep_open)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.add_space(4.0);
+                    
+                    // 1. Copy profile link
+                    if let ConnectionState::Authenticated(ref user) = self.connection_state {
+                        if let Some(ref short_id) = user.short_id {
+                            let profile_url = format!("https://overachiever.space/{}", short_id);
+                            
+                            ui.horizontal(|ui| {
+                                ui.label("Your profile:");
+                                if ui.button(format!("{} Copy Link", regular::COPY))
+                                    .on_hover_text(&profile_url)
+                                    .clicked() 
+                                {
+                                    ui.ctx().copy_text(profile_url);
+                                }
+                            });
+                            
+                            ui.add_space(8.0);
+                        }
+                    }
+                    
+                    // 2. Privacy Policy button
+                    if self.gdpr_consent.is_set() {
+                        if ui.button(format!("{} Privacy Policy", regular::SHIELD_CHECK))
+                            .on_hover_text("View privacy settings and data usage")
+                            .clicked() 
+                        {
+                            // Reset consent to show modal again
+                            self.gdpr_consent = GdprConsent::Unset;
+                            clear_gdpr_consent_from_storage();
+                            self.show_profile_menu = false;
+                        }
+                        
+                        ui.add_space(8.0);
+                    }
+                    
+                    // 3. Hide games feature (desktop only - not implemented in WASM yet)
+                    // This will be added later
+                    
+                    ui.add_space(4.0);
+                });
+            });
+        
+        if !keep_open {
+            self.show_profile_menu = false;
+        }
+    }
 }
+

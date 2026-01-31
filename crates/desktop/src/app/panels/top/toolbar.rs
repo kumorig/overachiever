@@ -133,21 +133,24 @@ impl SteamOverachieverApp {
                         self.show_settings = true;
                     }
                     
-                    // GDPR button - show if consent has been set
-                    if self.config.gdpr_consent.is_set() {
-                        if ui.button(regular::SHIELD_CHECK).on_hover_text("Privacy Settings").clicked() {
-                            self.show_gdpr_dialog = true;
-                        }
-                    }
-                    
-                    // User profile button - show shareable link if cloud linked
-                    if let Some(short_id) = self.config.get_short_id() {
-                        let profile_url = format!("https://overachiever.space/{}", short_id);
+                    // User profile button - opens profile menu if cloud linked
+                    if let Some(_short_id) = self.config.get_short_id() {
                         if ui.button(regular::USER)
-                            .on_hover_text_at_pointer(format!("Open profile: {}", profile_url))
+                            .on_hover_text("Profile Menu")
                             .clicked()
                         {
-                            let _ = open::that(&profile_url);
+                            self.show_profile_menu = !self.show_profile_menu;
+                        }
+                    } else {
+                        // Steam login button - show when not logged in
+                        let green = egui::Color32::from_rgb(62, 130, 61);
+                        let steam_button = egui::Button::new(regular::STEAM_LOGO)
+                            .fill(green);
+                        if ui.add(steam_button)
+                            .on_hover_text("Login with Steam")
+                            .clicked()
+                        {
+                            self.start_cloud_link();
                         }
                     }
 
@@ -172,5 +175,8 @@ impl SteamOverachieverApp {
         
         // Settings window
         self.render_settings_window(ctx);
+        
+        // Profile menu window
+        self.render_profile_menu(ctx);
     }
 }

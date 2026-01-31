@@ -3,4 +3,5 @@
 mod toolbar;
 mod settings;
 mod modals;
-mod fonts;
+pub mod fonts;
+mod profile_menu;
