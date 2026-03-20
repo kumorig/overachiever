@@ -151,6 +151,10 @@ pub struct Config {
     /// Tags scan delay between games in seconds (default: 5)
     #[serde(default = "default_tags_scan_delay_secs")]
     pub tags_scan_delay_secs: u64,
+
+    /// Hide private games from the games table (default: true)
+    #[serde(default = "default_true")]
+    pub hide_private_games: bool,
 }
 
 fn default_name_column_width() -> f32 {
@@ -167,6 +171,10 @@ fn default_ttb_scan_delay_secs() -> u64 {
 
 fn default_tags_scan_delay_secs() -> u64 {
     5
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -190,6 +198,7 @@ impl Default for Config {
             name_column_width: default_name_column_width(),
             ttb_scan_delay_secs: default_ttb_scan_delay_secs(),
             tags_scan_delay_secs: default_tags_scan_delay_secs(),
+            hide_private_games: true,
         }
     }
 }

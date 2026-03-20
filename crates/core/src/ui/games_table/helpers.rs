@@ -110,6 +110,11 @@ pub fn get_filtered_indices(platform: &impl GamesTablePlatform) -> Vec<usize> {
                 }
             }
 
+            // Hide private games if the config setting is enabled (independent of hidden filter)
+            if platform.hide_private_games() && g.steam_private {
+                return false;
+            }
+
             // Hidden filter - hide games that are hidden (manually or from Steam)
             let is_hidden = g.hidden || g.steam_hidden;
             match platform.filter_hidden() {

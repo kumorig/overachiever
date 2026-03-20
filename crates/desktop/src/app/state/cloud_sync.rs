@@ -218,9 +218,16 @@ impl SteamOverachieverApp {
             }
         };
         
+        // Filter out private games from upload if hide_private_games is enabled
+        let games_to_upload = if self.config.hide_private_games {
+            self.games.iter().filter(|g| !g.steam_private).cloned().collect()
+        } else {
+            self.games.clone()
+        };
+
         let data = CloudSyncData {
             steam_id: steam_id.clone(),
-            games: self.games.clone(),
+            games: games_to_upload,
             achievements,
             run_history: self.run_history.clone(),
             achievement_history: self.achievement_history.clone(),

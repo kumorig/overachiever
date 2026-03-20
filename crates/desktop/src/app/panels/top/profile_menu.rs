@@ -175,7 +175,17 @@ impl SteamOverachieverApp {
 
                     // 3. Private Games section
                     ui.heading("Private Games");
-                    
+
+                    if ui
+                        .checkbox(&mut self.config.hide_private_games, "Hide private games")
+                        .on_hover_text("Hide games marked as private in Steam from the games table and online profile")
+                        .changed()
+                    {
+                        let _ = self.config.save();
+                    }
+
+                    ui.add_space(4.0);
+
                     // Show counts
                     let hidden_count = self.games.iter().filter(|g| g.hidden).count();
                     let private_count = self.games.iter().filter(|g| g.steam_private).count();

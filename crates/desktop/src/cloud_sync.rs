@@ -724,3 +724,25 @@ pub fn fetch_ttb_batch(appids: &[u64]) -> Result<Vec<overachiever_core::TtbTimes
 
     Ok(times)
 }
+
+/// Fetch ALL TTB times from the server (no appid filter)
+pub fn fetch_all_ttb() -> Result<Vec<overachiever_core::TtbTimes>, String> {
+    let url = format!("{}/api/ttb/all", DEFAULT_SERVER_URL);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Server error {}: {}", status, body));
+    }
+
+    let times: Vec<overachiever_core::TtbTimes> = response.json()
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(times)
+}

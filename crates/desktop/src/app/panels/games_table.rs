@@ -315,6 +315,10 @@ impl GamesTablePlatform for SteamOverachieverApp {
     // Hidden Games Methods
     // ============================================================================
 
+    fn hide_private_games(&self) -> bool {
+        self.config.hide_private_games
+    }
+
     fn filter_hidden(&self) -> TriFilter {
         self.filter_hidden
     }
@@ -368,12 +372,39 @@ impl SteamOverachieverApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("Games Library ({} games)", self.games.len()));
             ui.separator();
-            
+
+            // Show alert if there are games that haven't been scraped yet (full scan incomplete)
+            if !self.games.is_empty() && self.games_needing_scrape() > 0 {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(40, 60, 80))
+                    .corner_radius(4.0)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new("\u{26a0}")
+                                    .color(egui::Color32::from_rgb(255, 200, 60))
+                                    .size(16.0),
+                            );
+                            ui.label(
+                                egui::RichText::new("A full scan needs to be completed before stats tracking can begin.")
+                                    .color(egui::Color32::from_rgb(220, 220, 220))
+                                    .strong(),
+                            );
+                            ui.label(
+                                egui::RichText::new("You can close the app at any time and continue the sync later \u{2014} progress will be saved.")
+                                    .color(egui::Color32::from_rgb(180, 180, 180)),
+                            );
+                        });
+                    });
+                ui.add_space(4.0);
+            }
+
             if self.games.is_empty() {
                 ui.label("No games loaded. Click 'Update' to load your Steam library.");
                 return;
             }
-            
+
             render_filter_bar(ui, self);
             ui.add_space(4.0);
             

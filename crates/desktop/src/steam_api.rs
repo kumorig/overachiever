@@ -100,9 +100,12 @@ pub fn fetch_owned_games_with_progress(progress_tx: Sender<FetchProgress>) -> Re
     let total = games.len() as i32;
     let unplayed = games.iter().filter(|g| g.playtime_forever == 0).count() as i32;
     let conn = crate::db::open_connection()?;
-    crate::db::upsert_games(&conn, &config.steam_id, &games)?;
-    crate::db::insert_run_history(&conn, &config.steam_id, total, unplayed)?;
-    
+    let track_changes = crate::db::has_completed_initial_scan(&conn);
+    crate::db::upsert_games(&conn, &config.steam_id, &games, track_changes)?;
+    if track_changes {
+        crate::db::insert_run_history(&conn, &config.steam_id, total, unplayed)?;
+    }
+
     // Stage 5: Done - reload from DB to get consistent state
     let games = crate::db::get_all_games(&conn, &config.steam_id)?;
     let _ = progress_tx.send(FetchProgress::Done { games, total });
@@ -148,21 +151,26 @@ pub fn scrape_achievements_with_progress(progress_tx: Sender<ScrapeProgress>, fo
         .unwrap_or_default();
     
     let conn = crate::db::open_connection()?;
-    crate::db::upsert_games(&conn, &config.steam_id, &games)?;
+    let track_changes = crate::db::has_completed_initial_scan(&conn);
+    crate::db::upsert_games(&conn, &config.steam_id, &games, track_changes)?;
     let total_games = games.len() as i32;
     let unplayed_games = games.iter().filter(|g| g.playtime_forever == 0).count() as i32;
-    crate::db::insert_run_history(&conn, &config.steam_id, total_games, unplayed_games)?;
+    if track_changes {
+        crate::db::insert_run_history(&conn, &config.steam_id, total_games, unplayed_games)?;
+    }
 
     // Step 1.5: Fetch recently played games (to capture F2P games not in GetOwnedGames)
     let recent_games = fetch_recently_played_games(steam_key, steam_id, config.debug_recently_played)?;
     if !recent_games.is_empty() {
-        crate::db::upsert_games(&conn, &config.steam_id, &recent_games)?;
+        crate::db::upsert_games(&conn, &config.steam_id, &recent_games, track_changes)?;
 
-        // Recalculate total games after adding recently played
-        let all_games_after_upsert = crate::db::get_all_games(&conn, &config.steam_id)?;
-        let new_total = all_games_after_upsert.len() as i32;
-        if new_total > total_games {
-            crate::db::update_run_history_total(&conn, &config.steam_id, new_total)?;
+        if track_changes {
+            // Recalculate total games after adding recently played
+            let all_games_after_upsert = crate::db::get_all_games(&conn, &config.steam_id)?;
+            let new_total = all_games_after_upsert.len() as i32;
+            if new_total > total_games {
+                crate::db::update_run_history_total(&conn, &config.steam_id, new_total)?;
+            }
         }
     }
 
@@ -420,11 +428,15 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
 
     update_log("Opening database connection...");
     let conn = crate::db::open_connection()?;
+    let track_changes = crate::db::has_completed_initial_scan(&conn);
+    update_log(&format!("Track changes: {} (initial scan completed: {})", track_changes, track_changes));
     update_log("Upserting games to database...");
-    crate::db::upsert_games(&conn, &config.steam_id, &games)?;
+    crate::db::upsert_games(&conn, &config.steam_id, &games, track_changes)?;
     let total_games = games.len() as i32;
     let unplayed_games = games.iter().filter(|g| g.playtime_forever == 0).count() as i32;
-    crate::db::insert_run_history(&conn, &config.steam_id, total_games, unplayed_games)?;
+    if track_changes {
+        crate::db::insert_run_history(&conn, &config.steam_id, total_games, unplayed_games)?;
+    }
     
     // Step 2: Fetch recently played games
     update_log("Fetching recently played games...");
@@ -453,12 +465,12 @@ pub fn run_update_with_progress(progress_tx: Sender<UpdateProgress>) -> Result<(
     
     // Upsert recently played games (in case any are missing from owned games)
     update_log("Upserting recently played games to database...");
-    crate::db::upsert_games(&conn, &config.steam_id, &recent_games)?;
+    crate::db::upsert_games(&conn, &config.steam_id, &recent_games, track_changes)?;
     
     // Recalculate total games after adding recently played (some F2P games might not be in GetOwnedGames)
     let all_games_after_upsert = crate::db::get_all_games(&conn, &config.steam_id)?;
     let new_total = all_games_after_upsert.len() as i32;
-    if new_total > total_games {
+    if track_changes && new_total > total_games {
         // Update the run_history entry with the correct total
         crate::db::update_run_history_total(&conn, &config.steam_id, new_total)?;
     }

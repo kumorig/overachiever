@@ -83,6 +83,15 @@ impl SteamOverachieverApp {
                         {
                             self.start_ttb_scan();
                         }
+
+                        // Download all TTB from backend button
+                        let is_ttb_downloading = self.ttb_batch_receiver.is_some();
+                        if ui.add_enabled(!is_busy && !is_ttb_downloading, egui::Button::new(format!("{} DL TTB", regular::CLOUD_ARROW_DOWN)))
+                            .on_hover_text("Download all TTB times from the server")
+                            .clicked()
+                        {
+                            self.start_ttb_full_download();
+                        }
                     }
 
                     // Tags Scan button - bulk fetch tags from SteamSpy

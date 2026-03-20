@@ -195,6 +195,20 @@ pub async fn remove_from_ttb_blacklist(
     }
 }
 
+/// Get ALL TTB times from the database (no limit)
+/// GET /api/ttb/all
+pub async fn get_all_ttb(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<TtbTimes>> {
+    match crate::db::get_all_ttb_times(&state.db_pool).await {
+        Ok(times) => Json(times),
+        Err(e) => {
+            tracing::error!("Failed to get all TTB times: {:?}", e);
+            Json(vec![])
+        }
+    }
+}
+
 #[derive(serde::Serialize)]
 pub struct TtbBlacklistListResponse {
     pub appids: Vec<u64>,

@@ -276,7 +276,7 @@ pub fn render_games_over_time<P: StatsPanelPlatform>(
     });
     
     if run_history.is_empty() {
-        ui.label("No history yet. Sync to start tracking!");
+        ui.label("No history yet. Complete a full scan to start tracking!");
     } else {
         // Debug: show data point count
         ui.small(format!("{} data points", run_history.len()));

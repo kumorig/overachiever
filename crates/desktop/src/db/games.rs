@@ -7,17 +7,18 @@ use chrono::Utc;
 use super::first_plays::record_first_play;
 
 /// Upsert games from Steam API into the database
-pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> Result<()> {
+pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame], track_changes: bool) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     for game in games {
         // Check if this is a first play (game existed with 0 playtime, now has playtime)
-        if game.playtime_forever > 0 {
+        // Only track first plays after the initial scan has completed (baseline established)
+        if track_changes && game.playtime_forever > 0 {
             let old_playtime: Option<u32> = conn.query_row(
                 "SELECT playtime_forever FROM games WHERE steam_id = ?1 AND appid = ?2",
                 [steam_id, &game.appid.to_string()],
                 |row| row.get(0),
             ).ok();
-            
+
             if old_playtime == Some(0) {
                 // First time playing! Record it using rtime_last_played as the timestamp
                 if let Some(played_at) = game.rtime_last_played {

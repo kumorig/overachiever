@@ -27,7 +27,6 @@ thiserror = "1.0"
 # Core crate
 overachiever-core = { path = "crates/core" }
 
-# Optimize release builds for WASM
 [profile.release]
 opt-level = "s"
 lto = true

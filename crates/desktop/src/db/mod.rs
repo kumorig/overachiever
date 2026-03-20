@@ -563,17 +563,18 @@ pub fn ensure_user(conn: &Connection, steam_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame]) -> Result<()> {
+pub fn upsert_games(conn: &Connection, steam_id: &str, games: &[SteamGame], track_changes: bool) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     for game in games {
         // Check if this is a first play (game existed with 0 playtime, now has playtime)
-        if game.playtime_forever > 0 {
+        // Only track first plays after the initial scan has completed (baseline established)
+        if track_changes && game.playtime_forever > 0 {
             let old_playtime: Option<u32> = conn.query_row(
                 "SELECT playtime_forever FROM games WHERE steam_id = ?1 AND appid = ?2",
                 [steam_id, &game.appid.to_string()],
                 |row| row.get(0),
             ).ok();
-            
+
             if old_playtime == Some(0) {
                 // First time playing! Record it using rtime_last_played as the timestamp
                 if let Some(played_at) = game.rtime_last_played {
@@ -813,6 +814,62 @@ pub fn record_last_update(conn: &Connection) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
         "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('last_update', ?1)",
+        [&now],
+    )?;
+    Ok(())
+}
+
+/// Check if private games have been synced from Steam before
+pub fn has_synced_private_games(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = 'synced_private_games'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).is_ok()
+}
+
+/// Record that private games have been synced from Steam
+pub fn record_synced_private_games(conn: &Connection) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('synced_private_games', ?1)",
+        [&now],
+    )?;
+    Ok(())
+}
+
+/// Check if the initial scan has been completed (baseline data established)
+pub fn has_completed_initial_scan(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = 'initial_scan_complete'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).is_ok()
+}
+
+/// Migrate existing users: if they already have run_history, mark initial scan as complete
+pub fn migrate_initial_scan_flag(conn: &Connection) -> Result<()> {
+    // Only run if initial_scan_complete is not already set
+    if has_completed_initial_scan(conn) {
+        return Ok(());
+    }
+    // If there are existing run_history entries, this is an existing user
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM run_history",
+        [],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    if count > 0 {
+        record_initial_scan_complete(conn)?;
+    }
+    Ok(())
+}
+
+/// Record that the initial scan has been completed (baseline data established)
+pub fn record_initial_scan_complete(conn: &Connection) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('initial_scan_complete', ?1)",
         [&now],
     )?;
     Ok(())

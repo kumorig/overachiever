@@ -70,6 +70,9 @@ impl SteamOverachieverApp {
 
     /// Process TTB scan queue (called each frame)
     pub(crate) fn ttb_scan_tick(&mut self) {
+        // Check for batch download results from backend
+        self.ttb_batch_tick();
+
         // Track if we're in a batch scan (vs single fetch)
         let is_scanning = matches!(self.state, AppState::TtbScanning { .. });
 
@@ -102,12 +105,14 @@ impl SteamOverachieverApp {
 
                     // Check if scan is complete (or single fetch finished)
                     if self.ttb_scan_queue.is_empty() {
-                        self.state = AppState::Idle;
-                        self.status = if is_scanning {
-                            "TTB scan complete!".to_string()
+                        if is_scanning {
+                            // Scan complete - now download any remaining TTB from backend
+                            self.start_ttb_batch_download();
+                            self.status = "TTB scan complete! Downloading from server...".to_string();
                         } else {
-                            format!("TTB loaded for {}", game_name)
-                        };
+                            self.status = format!("TTB loaded for {}", game_name);
+                        }
+                        self.state = AppState::Idle;
                     }
                 }
                 Ok(Err(e)) => {
@@ -118,12 +123,14 @@ impl SteamOverachieverApp {
 
                     // Check if scan is complete
                     if self.ttb_scan_queue.is_empty() {
-                        self.state = AppState::Idle;
-                        self.status = if is_scanning {
-                            "TTB scan complete!".to_string()
+                        if is_scanning {
+                            // Scan complete - now download any remaining TTB from backend
+                            self.start_ttb_batch_download();
+                            self.status = "TTB scan complete! Downloading from server...".to_string();
                         } else {
-                            format!("TTB error: {}", e)
-                        };
+                            self.status = format!("TTB error: {}", e);
+                        }
+                        self.state = AppState::Idle;
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -251,6 +258,89 @@ impl SteamOverachieverApp {
                     ttb_log(&format!("Added {} to TTB blacklist", appid_copy));
                 }
             });
+        }
+    }
+
+    /// Start downloading ALL TTB data from the backend (admin shortcut)
+    pub(crate) fn start_ttb_full_download(&mut self) {
+        if self.ttb_batch_receiver.is_some() {
+            return; // Already downloading
+        }
+
+        ttb_log("Starting full TTB download from backend...");
+        self.status = "Downloading all TTB times from server...".to_string();
+
+        let (tx, rx) = channel();
+        self.ttb_batch_receiver = Some(rx);
+
+        thread::spawn(move || {
+            let result = crate::cloud_sync::fetch_all_ttb();
+            let _ = tx.send(result);
+        });
+    }
+
+    /// Start downloading TTB data from backend for games still missing local TTB
+    fn start_ttb_batch_download(&mut self) {
+        // Collect appids of games that still don't have TTB data locally
+        let missing_appids: Vec<u64> = self.games.iter()
+            .map(|g| g.appid)
+            .filter(|appid| !self.ttb_cache.contains_key(appid))
+            .collect();
+
+        if missing_appids.is_empty() {
+            ttb_log("No games missing TTB data - skipping backend download");
+            return;
+        }
+
+        ttb_log(&format!("Downloading TTB from backend for {} games...", missing_appids.len()));
+
+        let (tx, rx) = channel();
+        self.ttb_batch_receiver = Some(rx);
+
+        thread::spawn(move || {
+            let result = crate::cloud_sync::fetch_ttb_batch(&missing_appids);
+            let _ = tx.send(result);
+        });
+    }
+
+    /// Check for batch TTB download results from backend
+    fn ttb_batch_tick(&mut self) {
+        let receiver = match self.ttb_batch_receiver.as_ref() {
+            Some(r) => r,
+            None => return,
+        };
+
+        match receiver.try_recv() {
+            Ok(Ok(ttb_times)) => {
+                let count = ttb_times.len();
+                ttb_log(&format!("Downloaded {} TTB entries from backend", count));
+
+                if let Ok(conn) = open_connection() {
+                    for times in ttb_times {
+                        let _ = cache_ttb_times(&conn, &times);
+                        self.ttb_cache.insert(times.appid, times);
+                    }
+                }
+
+                self.ttb_batch_receiver = None;
+                if count > 0 {
+                    self.status = format!("TTB scan complete! Downloaded {} entries from server", count);
+                } else {
+                    self.status = "TTB scan complete!".to_string();
+                }
+            }
+            Ok(Err(e)) => {
+                ttb_log(&format!("TTB batch download failed: {}", e));
+                self.ttb_batch_receiver = None;
+                self.status = "TTB scan complete!".to_string();
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Still waiting
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                ttb_log("TTB batch download thread disconnected");
+                self.ttb_batch_receiver = None;
+            }
         }
     }
 

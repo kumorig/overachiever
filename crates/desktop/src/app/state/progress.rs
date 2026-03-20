@@ -2,7 +2,8 @@
 
 use crate::db::{
     backfill_run_history_unplayed, get_achievement_history, get_last_update, get_log_entries,
-    get_run_history, insert_achievement_history, open_connection, update_latest_run_history_unplayed,
+    get_run_history, has_completed_initial_scan, insert_achievement_history, open_connection,
+    record_initial_scan_complete, update_latest_run_history_unplayed,
 };
 use crate::steam_api::{FetchProgress, ScrapeProgress, UpdateProgress};
 use crate::ui::{AppState, ProgressReceiver, FLASH_DURATION};
@@ -133,7 +134,10 @@ impl SteamOverachieverApp {
                             self.sort_games();
                             if let Ok(conn) = open_connection() {
                                 self.run_history = get_run_history(&conn, &self.config.steam_id).unwrap_or_default();
+                                // Mark initial scan complete so tracking starts on next run
+                                let _ = record_initial_scan_complete(&conn);
                             }
+
                             self.status = format!("Fetched {} games!", total);
                             self.state = AppState::Idle;
                             return;
@@ -177,18 +181,23 @@ impl SteamOverachieverApp {
                         ScrapeProgress::Done { games } => {
                             self.games = games;
                             self.sort_games();
-                            
+
                             // Reload run history since we fetched games as well
                             if let Ok(conn) = open_connection() {
                                 self.run_history = get_run_history(&conn, &self.config.steam_id).unwrap_or_default();
                             }
-                            
-                            // Calculate and save achievement stats
+
+                            // Calculate and save achievement stats (before marking initial scan complete)
                             self.save_achievement_history();
-                            
+
+                            // Mark initial scan complete so tracking starts on next run
+                            if let Ok(conn) = open_connection() {
+                                let _ = record_initial_scan_complete(&conn);
+                            }
+
                             // Refresh installed games detection
                             self.refresh_installed_games();
-                            
+
                             self.status = "Full scan complete!".to_string();
                             self.state = AppState::Idle;
                             return;
@@ -232,19 +241,24 @@ impl SteamOverachieverApp {
                         UpdateProgress::Done { games, updated_count } => {
                             self.games = games;
                             self.sort_games();
-                            
+
                             // Reload run history
                             if let Ok(conn) = open_connection() {
                                 self.run_history = get_run_history(&conn, &self.config.steam_id).unwrap_or_default();
                                 self.last_update_time = get_last_update(&conn).unwrap_or(None);
                             }
-                            
-                            // Calculate and save achievement stats
+
+                            // Calculate and save achievement stats (before marking initial scan complete)
                             self.save_achievement_history();
-                            
+
+                            // Mark initial scan complete so tracking starts on next run
+                            if let Ok(conn) = open_connection() {
+                                let _ = record_initial_scan_complete(&conn);
+                            }
+
                             // Refresh installed games detection
                             self.refresh_installed_games();
-                            
+
                             self.status = format!("Update complete! {} games updated.", updated_count);
                             self.state = AppState::Idle;
                             return;
@@ -386,20 +400,23 @@ impl SteamOverachieverApp {
         };
         
         if let Ok(conn) = open_connection() {
-            // Update the unplayed count in the most recent run_history entry
-            let _ = update_latest_run_history_unplayed(&conn, &self.config.steam_id, unplayed_with_ach);
-            
-            // Backfill historical entries that have 0 unplayed (from before this feature)
-            let _ = backfill_run_history_unplayed(&conn, &self.config.steam_id, unplayed_with_ach);
-            
-            let _ = insert_achievement_history(
-                &conn,
-                &self.config.steam_id,
-                total_achievements,
-                unlocked_achievements,
-                games_with_ach.len() as i32,
-                avg_completion,
-            );
+            // Only record tracking data after the initial scan has established a baseline
+            if has_completed_initial_scan(&conn) {
+                // Update the unplayed count in the most recent run_history entry
+                let _ = update_latest_run_history_unplayed(&conn, &self.config.steam_id, unplayed_with_ach);
+
+                // Backfill historical entries that have 0 unplayed (from before this feature)
+                let _ = backfill_run_history_unplayed(&conn, &self.config.steam_id, unplayed_with_ach);
+
+                let _ = insert_achievement_history(
+                    &conn,
+                    &self.config.steam_id,
+                    total_achievements,
+                    unlocked_achievements,
+                    games_with_ach.len() as i32,
+                    avg_completion,
+                );
+            }
             self.run_history = get_run_history(&conn, &self.config.steam_id).unwrap_or_default();
             self.achievement_history = get_achievement_history(&conn, &self.config.steam_id).unwrap_or_default();
             self.log_entries = get_log_entries(&conn, &self.config.steam_id, 30).unwrap_or_default();

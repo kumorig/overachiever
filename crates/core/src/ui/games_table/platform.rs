@@ -185,6 +185,9 @@ pub trait GamesTablePlatform: StatsPanelPlatform {
     // Hidden Games Methods
     // ============================================================================
 
+    /// Whether to hide steam_private games from view (config setting)
+    fn hide_private_games(&self) -> bool { true }
+
     /// Get hidden games filter state (All, Show Only Hidden, Hide Hidden)
     fn filter_hidden(&self) -> TriFilter { TriFilter::Without }  // Default: hide hidden games
 

@@ -6,8 +6,9 @@ mod state;
 use crate::cloud_sync::{AuthResult, CloudOpResult, CloudSyncState};
 use crate::config::Config;
 use crate::db::{
-    ensure_user, finalize_migration, get_achievement_history, get_all_achievement_ratings, get_all_games, get_last_update, get_log_entries, get_run_history,
-    open_connection,
+    ensure_user, finalize_migration, get_achievement_history, get_all_achievement_ratings,
+    get_all_games, get_last_update, get_log_entries, get_run_history, has_synced_private_games,
+    migrate_initial_scan_flag, record_synced_private_games, open_connection,
 };
 use crate::icon_cache::IconCache;
 use crate::steam_library::get_installed_games;
@@ -115,6 +116,8 @@ pub struct SteamOverachieverApp {
     pub(crate) admin_mode: bool,
     // TTB blacklist - games excluded from TTB scanning (loaded from backend)
     pub(crate) ttb_blacklist: HashSet<u64>,
+    // TTB batch download: receiver for async batch fetch from backend
+    pub(crate) ttb_batch_receiver: Option<Receiver<Result<Vec<overachiever_core::TtbTimes>, String>>>,
     // Tag filters - currently selected tags (empty = show all games)
     pub(crate) filter_tags: Vec<String>,
     // Tag search input text for searchable dropdown
@@ -186,7 +189,22 @@ impl SteamOverachieverApp {
             let _ = ensure_user(&conn, steam_id);
         }
 
-        let games = get_all_games(&conn, steam_id).unwrap_or_default();
+        // Migrate existing users: mark initial scan complete if they already have tracking data
+        let _ = migrate_initial_scan_flag(&conn);
+
+        let mut games = get_all_games(&conn, steam_id).unwrap_or_default();
+
+        // Auto-sync private/hidden games from Steam on each startup
+        if !steam_id.is_empty() {
+            if let Ok(count) = crate::steam_config::sync_steam_hidden_games(&conn, steam_id) {
+                if count > 0 {
+                    // Reload games to pick up the private/hidden flags
+                    games = get_all_games(&conn, steam_id).unwrap_or_default();
+                }
+            }
+            let _ = record_synced_private_games(&conn);
+        }
+
         let run_history = get_run_history(&conn, steam_id).unwrap_or_default();
         let achievement_history = get_achievement_history(&conn, steam_id).unwrap_or_default();
         let log_entries = get_log_entries(&conn, steam_id, 30).unwrap_or_default();
@@ -281,6 +299,7 @@ impl SteamOverachieverApp {
             fonts_need_update: false,
             admin_mode: false,
             ttb_blacklist: HashSet::new(),
+            ttb_batch_receiver: None,
             filter_tags: Vec::new(),
             tag_search_input: String::new(),
             available_tags: Vec::new(),
@@ -352,9 +371,10 @@ impl eframe::App for SteamOverachieverApp {
         let has_launch_cooldowns = !self.game_launch_times.is_empty();
         let is_ttb_scanning = !self.ttb_scan_queue.is_empty();
         let is_ttb_fetching = self.ttb_receiver.is_some();
+        let is_ttb_batch = self.ttb_batch_receiver.is_some();
 
         // Request repaint while busy or while animations are active
-        if is_busy || has_flashing || is_linking || is_cloud_op || has_launch_cooldowns || is_ttb_scanning || is_ttb_fetching {
+        if is_busy || has_flashing || is_linking || is_cloud_op || has_launch_cooldowns || is_ttb_scanning || is_ttb_fetching || is_ttb_batch {
             ctx.request_repaint();
         }
 

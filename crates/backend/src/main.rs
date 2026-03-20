@@ -97,8 +97,9 @@ async fn main() {
         .route("/api/size-on-disk", post(routes::submit_size_on_disk))
         // Time to beat (TTB) endpoints
         .route("/api/ttb", post(routes::submit_ttb))
-        .route("/api/ttb/{appid}", get(routes::get_ttb))
         .route("/api/ttb/batch", post(routes::get_ttb_batch))
+        .route("/api/ttb/all", get(routes::get_all_ttb))
+        .route("/api/ttb/{appid}", get(routes::get_ttb))
         // TTB blacklist endpoints
         .route("/api/ttb/blacklist", get(routes::get_ttb_blacklist))
         .route("/api/ttb/blacklist", post(routes::add_to_ttb_blacklist))

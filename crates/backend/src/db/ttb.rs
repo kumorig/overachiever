@@ -141,6 +141,26 @@ pub async fn get_ttb_blacklist(pool: &Pool) -> Result<Vec<u64>, DbError> {
     Ok(appids)
 }
 
+/// Get ALL TTB times from the database
+pub async fn get_all_ttb_times(pool: &Pool) -> Result<Vec<overachiever_core::TtbTimes>, DbError> {
+    let client = pool.get().await?;
+
+    let rows = client.query(
+        "SELECT appid, main, main_extra, completionist, last_reported_at FROM ttb_times",
+        &[]
+    ).await?;
+
+    let times = rows.into_iter().map(|r| overachiever_core::TtbTimes {
+        appid: r.get::<_, i64>("appid") as u64,
+        main: r.get("main"),
+        main_extra: r.get("main_extra"),
+        completionist: r.get("completionist"),
+        updated_at: r.get("last_reported_at"),
+    }).collect();
+
+    Ok(times)
+}
+
 /// Check if a game is in the TTB blacklist
 #[allow(dead_code)]
 pub async fn is_in_ttb_blacklist(pool: &Pool, appid: u64) -> Result<bool, DbError> {

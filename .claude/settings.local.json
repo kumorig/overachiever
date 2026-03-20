@@ -10,7 +10,9 @@
       "WebSearch",
       "WebFetch(domain:steamspy.com)",
       "WebFetch(domain:steamapi.xpaw.me)",
-      "WebFetch(domain:steamdb.info)"
+      "WebFetch(domain:steamdb.info)",
+      "Bash(cargo build:*)",
+      "Bash(schtasks:*)"
     ]
   }
 }
