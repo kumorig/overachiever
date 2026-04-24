@@ -7,7 +7,7 @@ use crate::cloud_sync::{AuthResult, CloudOpResult, CloudSyncState};
 use crate::config::Config;
 use crate::db::{
     ensure_user, finalize_migration, get_achievement_history, get_all_achievement_ratings,
-    get_all_games, get_last_update, get_log_entries, get_run_history, has_synced_private_games,
+    get_all_games, get_last_update, get_log_entries, get_run_history,
     migrate_initial_scan_flag, record_synced_private_games, open_connection,
 };
 use crate::icon_cache::IconCache;
@@ -37,6 +37,8 @@ pub struct SteamOverachieverApp {
     pub(crate) last_update_time: Option<chrono::DateTime<chrono::Utc>>,
     // Force full scan even when all games have been scraped
     pub(crate) force_full_scan: bool,
+    // Whether the auto-scrape-on-startup has already fired this session
+    pub(crate) auto_scrape_attempted: bool,
     // Include unplayed games (0%) in avg completion calculation
     pub(crate) include_unplayed_in_avg: bool,
     // Track which rows are expanded to show achievements
@@ -257,6 +259,7 @@ impl SteamOverachieverApp {
             updated_games: HashMap::new(),
             last_update_time,
             force_full_scan: false,
+            auto_scrape_attempted: false,
             include_unplayed_in_avg: false,
             expanded_rows: HashSet::new(),
             achievements_cache: HashMap::new(),
@@ -365,6 +368,22 @@ impl eframe::App for SteamOverachieverApp {
         self.tags_fetch_tick(); // Process tags fetch queue
 
         let is_busy = self.state.is_busy();
+
+        // Auto-trigger Full Scan once per session when only a small number of
+        // games still need achievement scraping (< 50). Happens silently in
+        // the background so the stats-tracking warning clears without a click.
+        if !self.auto_scrape_attempted
+            && !is_busy
+            && self.config.is_valid()
+            && !self.games.is_empty()
+        {
+            let needs = self.games_needing_scrape();
+            if needs > 0 && needs < 50 {
+                self.auto_scrape_attempted = true;
+                self.start_scrape();
+            }
+        }
+
         let has_flashing = !self.updated_games.is_empty();
         let is_linking = self.auth_receiver.is_some();
         let is_cloud_op = self.cloud_op_receiver.is_some();

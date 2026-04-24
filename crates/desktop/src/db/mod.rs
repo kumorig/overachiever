@@ -820,6 +820,7 @@ pub fn record_last_update(conn: &Connection) -> Result<()> {
 }
 
 /// Check if private games have been synced from Steam before
+#[allow(dead_code)]
 pub fn has_synced_private_games(conn: &Connection) -> bool {
     conn.query_row(
         "SELECT value FROM app_settings WHERE key = 'synced_private_games'",
